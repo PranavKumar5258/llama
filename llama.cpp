@@ -67,6 +67,7 @@ enum e_model {
     MODEL_13B,
     MODEL_30B,
     MODEL_65B,
+    MODEL_70B,
 };
 
 static const size_t kB = 1024;
@@ -110,6 +111,7 @@ static const std::map<e_model, size_t> & MEM_REQ_SCRATCH0(int n_ctx)
         { MODEL_13B,  ((size_t) n_ctx / 12ull + 256ull) * MB },
         { MODEL_30B,  ((size_t) n_ctx / 10ull + 256ull) * MB },
         { MODEL_65B,  ((size_t) n_ctx /  8ull + 512ull) * MB },
+        { MODEL_70B,  ((size_t) n_ctx /  8ull + 512ull) * MB },
     };
     return k_sizes;
 }
@@ -122,6 +124,7 @@ static const std::map<e_model, size_t> & MEM_REQ_SCRATCH1()
         { MODEL_13B,   512ull * MB },
         { MODEL_30B,   512ull * MB },
         { MODEL_65B,  1024ull * MB },
+        { MODEL_70B,  1024ull * MB },
     };
     return k_sizes;
 }
@@ -135,6 +138,7 @@ static const std::map<e_model, size_t> & MEM_REQ_KV_SELF()
         { MODEL_13B,  1608ull * MB },
         { MODEL_30B,  3124ull * MB },
         { MODEL_65B,  5120ull * MB },
+        { MODEL_70B,  5120ull * MB },
     };
     return k_sizes;
 }
@@ -149,6 +153,7 @@ static const std::map<e_model, size_t> & MEM_REQ_EVAL(int n_ctx)
         { MODEL_13B, ((size_t) n_ctx / 256ull + 1024ull) * MB },
         { MODEL_30B, ((size_t) n_ctx / 256ull + 1280ull) * MB },
         { MODEL_65B, ((size_t) n_ctx / 256ull + 1536ull) * MB },
+        { MODEL_70B, ((size_t) n_ctx / 256ull + 1536ull) * MB },
     };
     return k_sizes;
 }
@@ -163,6 +168,7 @@ static const std::map<e_model, size_t> & VRAM_REQ_SCRATCH_BASE()
         { MODEL_13B,  640ull * kB },
         { MODEL_30B,  768ull * kB },
         { MODEL_65B, 1536ull * kB },
+        { MODEL_70B, 1536ull * kB },
     };
     return k_sizes;
 }
@@ -177,6 +183,7 @@ static const std::map<e_model, size_t> & VRAM_REQ_SCRATCH_PER_CONTEXT()
         { MODEL_13B, 160ull },
         { MODEL_30B, 208ull },
         { MODEL_65B, 416ull },
+        { MODEL_70B, 516ull },
     };
     return k_sizes;
 }
@@ -964,6 +971,7 @@ static const char *llama_model_type_name(e_model type) {
         case MODEL_13B: return "13B";
         case MODEL_30B: return "30B";
         case MODEL_65B: return "65B";
+        case MODEL_70B: return "70B";
         default: LLAMA_ASSERT(false);
     }
 }
@@ -1003,7 +1011,7 @@ static void llama_model_load_internal(
             case 32: model.type = e_model::MODEL_7B; break;
             case 40: model.type = e_model::MODEL_13B; break;
             case 60: model.type = e_model::MODEL_30B; break;
-            case 80: model.type = e_model::MODEL_65B; break;
+            case 80: model.type = e_model::MODEL_70B; break;
             default:
                 {
                     if (hparams.n_layer < 32) {
@@ -1018,7 +1026,8 @@ static void llama_model_load_internal(
         hparams.rope_freq_scale = rope_freq_scale;
     }
 
-    const uint32_t n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
+    //const uint32_t n_ff = ((2*(4*hparams.n_embd)/3 + hparams.n_mult - 1)/hparams.n_mult)*hparams.n_mult;
+    const uint32_t n_ff = 28672;
 
     {
         fprintf(stderr, "%s: format     = %s\n",   __func__, llama_file_version_name(file_version));
@@ -1153,8 +1162,8 @@ static void llama_model_load_internal(
             layer.attention_norm = ml->get_tensor(layers_i + ".attention_norm.weight", {n_embd}, backend);
 
             layer.wq = ml->get_tensor(layers_i + ".attention.wq.weight", {n_embd, n_embd}, backend_split);
-            layer.wk = ml->get_tensor(layers_i + ".attention.wk.weight", {n_embd, n_embd}, backend_split);
-            layer.wv = ml->get_tensor(layers_i + ".attention.wv.weight", {n_embd, n_embd}, backend_split);
+            layer.wk = ml->get_tensor(layers_i + ".attention.wk.weight", {n_embd, n_embd/8}, backend_split);
+            layer.wv = ml->get_tensor(layers_i + ".attention.wv.weight", {n_embd, n_embd/8}, backend_split);
             layer.wo = ml->get_tensor(layers_i + ".attention.wo.weight", {n_embd, n_embd}, backend_split);
 
             layer.ffn_norm = ml->get_tensor(layers_i + ".ffn_norm.weight", {n_embd}, backend);
@@ -1450,7 +1459,7 @@ static bool llama_eval_internal(
             offload_func_kq(tmpq);
             ggml_set_name(tmpq, "tmpq");
 
-            struct ggml_tensor * Kcur = ggml_rope_custom_inplace(ctx0, ggml_reshape_3d(ctx0, tmpk, n_embd/n_head, n_head, N), n_past, n_rot, 0, freq_base, freq_scale, 0);
+            struct ggml_tensor * Kcur = ggml_rope_custom_inplace(ctx0, ggml_reshape_3d(ctx0, tmpk, n_embd/n_head, n_head/8, N), n_past, n_rot, 0, freq_base, freq_scale, 0);
             offload_func_kq(Kcur);
             ggml_set_name(Kcur, "Kcur");
 
@@ -1466,17 +1475,17 @@ static bool llama_eval_internal(
                 offload_func_v(tmpv);
                 ggml_set_name(tmpv, "tmpv");
 
-                struct ggml_tensor * Vcur = ggml_transpose(ctx0, ggml_reshape_2d(ctx0, tmpv, n_embd, N));
+                struct ggml_tensor * Vcur = ggml_transpose(ctx0, ggml_reshape_2d(ctx0, tmpv, n_embd/8, N));
                 offload_func_v(Vcur);
                 ggml_set_name(Vcur, "Vcur");
 
-                struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, N*n_embd, (ggml_element_size(kv_self.k)*n_embd)*(il*n_ctx + n_past));
+                struct ggml_tensor * k = ggml_view_1d(ctx0, kv_self.k, N*n_embd/8, (ggml_element_size(kv_self.k)*n_embd/8)*(il*n_ctx + n_past));
                 offload_func_kq(k);
                 ggml_set_name(k, "k");
 
-                struct ggml_tensor * v = ggml_view_2d(ctx0, kv_self.v, N, n_embd,
+                struct ggml_tensor * v = ggml_view_2d(ctx0, kv_self.v, N, n_embd/8,
                         (   n_ctx)*ggml_element_size(kv_self.v),
-                        (il*n_ctx)*ggml_element_size(kv_self.v)*n_embd + n_past*ggml_element_size(kv_self.v));
+                        (il*n_ctx)*ggml_element_size(kv_self.v)*n_embd/8 + n_past*ggml_element_size(kv_self.v));
                 offload_func_v(v);
                 ggml_set_name(v, "v");
 
@@ -1495,8 +1504,8 @@ static bool llama_eval_internal(
             struct ggml_tensor * K =
                 ggml_permute(ctx0,
                         ggml_reshape_3d(ctx0,
-                            ggml_view_1d(ctx0, kv_self.k, (n_past + N)*n_embd, il*n_ctx*ggml_element_size(kv_self.k)*n_embd),
-                            n_embd/n_head, n_head, n_past + N),
+                            ggml_view_1d(ctx0, kv_self.k, (n_past + N)*n_embd/8, il*n_ctx*ggml_element_size(kv_self.k)*n_embd/8),
+                            n_embd/n_head, n_head/8, n_past + N),
                         0, 2, 1, 3);
             offload_func_kq(K);
             ggml_set_name(K, "K");
@@ -1528,10 +1537,10 @@ static bool llama_eval_internal(
             // split cached V into n_head heads
             struct ggml_tensor * V =
                 ggml_view_3d(ctx0, kv_self.v,
-                        n_past + N, n_embd/n_head, n_head,
+                        n_past + N, n_embd/n_head, n_head/8,
                         n_ctx*ggml_element_size(kv_self.v),
                         n_ctx*ggml_element_size(kv_self.v)*n_embd/n_head,
-                        il*n_ctx*ggml_element_size(kv_self.v)*n_embd);
+                        il*n_ctx*ggml_element_size(kv_self.v)*n_embd/8);
             offload_func_v(V);
             ggml_set_name(V, "V");
 
