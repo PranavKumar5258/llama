@@ -386,12 +386,16 @@ struct LLM_TN {
 // ggml helpers
 //
 
-static void ggml_graph_compute_helper(std::vector<uint8_t> & buf, ggml_cgraph * graph, int n_threads) {
+static void ggml_graph_compute_helper(std::vector<uint8_t> & buf, ggml_cgraph * graph, int n_threads, llama_abort_callback abort_callback) {
     struct ggml_cplan plan = ggml_graph_plan(graph, n_threads);
 
     if (plan.work_size > 0) {
         buf.resize(plan.work_size);
         plan.work_data = buf.data();
+    }
+
+    if (abort_callback) {
+        plan.abort_callback = abort_callback;
     }
 
     ggml_graph_compute(graph, &plan);
@@ -2902,10 +2906,10 @@ static bool llama_eval_internal(
             ggml_metal_get_tensor(lctx.ctx_metal, embeddings);
         }
     } else {
-        ggml_graph_compute_helper(lctx.work_buffer, gf, n_threads);
+        ggml_graph_compute_helper(lctx.work_buffer, gf, n_threads, nullptr);
     }
 #else
-    ggml_graph_compute_helper(lctx.work_buffer, gf, n_threads);
+    ggml_graph_compute_helper(lctx.work_buffer, gf, n_threads, nullptr);
 #endif
 
 #if GGML_USE_MPI
@@ -5198,7 +5202,7 @@ int llama_apply_lora_from_file_internal(const struct llama_model & model, const 
 
             struct ggml_cgraph gf = ggml_build_forward(r);
 
-            ggml_graph_compute_helper(work_buffer, &gf, n_threads);
+            ggml_graph_compute_helper(work_buffer, &gf, n_threads, nullptr);
 
             // we won't need these tensors again, reset the context to save memory
             ggml_free(lora_ctx);
@@ -5240,6 +5244,8 @@ struct llama_context_params llama_context_default_params() {
         /*.rope_freq_scale             =*/ 1.0f,
         /*.progress_callback           =*/ nullptr,
         /*.progress_callback_user_data =*/ nullptr,
+        /*.abort_callback              =*/ nullptr,
+        /*.abort_callback_user_data    =*/ nullptr,
         /*.low_vram                    =*/ false,
         /*.mul_mat_q                   =*/ false,
         /*.f16_kv                      =*/ true,
@@ -5776,7 +5782,7 @@ void llama_copy_state_data_internal(struct llama_context * ctx, llama_data_conte
 
             ggml_build_forward_expand(&gf, ggml_cpy(cpy_ctx, k3d, kout3d));
             ggml_build_forward_expand(&gf, ggml_cpy(cpy_ctx, v3d, vout3d));
-            ggml_graph_compute_helper(ctx->work_buffer, &gf, /*n_threads*/ 1);
+            ggml_graph_compute_helper(ctx->work_buffer, &gf, /*n_threads*/ 1, nullptr);
 
             ggml_free(cpy_ctx);
 
@@ -5886,7 +5892,7 @@ size_t llama_set_state_data(struct llama_context * ctx, uint8_t * src) {
 
             ggml_build_forward_expand(&gf, ggml_cpy(cpy_ctx, kin3d, k3d));
             ggml_build_forward_expand(&gf, ggml_cpy(cpy_ctx, vin3d, v3d));
-            ggml_graph_compute_helper(ctx->work_buffer, &gf, /*n_threads*/ 1);
+            ggml_graph_compute_helper(ctx->work_buffer, &gf, /*n_threads*/ 1, nullptr);
 
             ggml_free(cpy_ctx);
         }
