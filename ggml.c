@@ -11137,8 +11137,7 @@ static void ggml_compute_forward_rope_f32(
                     theta_base *= freq_scale;
                     for (int64_t ib = 0; ib < ne0/n_dims; ++ib) {
                         for (int64_t ic = 0; ic < n_dims; ic += 2) {
-                            // simplified from `(ib * n_dims + ic) * inv_ndims`
-                            float cur_rot = inv_ndims * ic - ib;
+                            int64_t cur_rot = ib * n_dims + ic;
 
                             float cos_theta, sin_theta;
                             rope_yarn(
@@ -11290,8 +11289,7 @@ static void ggml_compute_forward_rope_f16(
                     theta_base *= freq_scale;
                     for (int64_t ib = 0; ib < ne0/n_dims; ++ib) {
                         for (int64_t ic = 0; ic < n_dims; ic += 2) {
-                            // simplified from `(ib * n_dims + ic) * inv_ndims`
-                            float cur_rot = inv_ndims * ic - ib;
+                            int64_t cur_rot = ib * n_dims + ic;
 
                             float cos_theta, sin_theta;
                             rope_yarn(
