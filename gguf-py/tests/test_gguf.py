@@ -96,5 +96,7 @@ class TestGGUFWriter(unittest.TestCase):
                 expected_float_binary = struct.pack('f', value_to_write)
                 self.assertTrue(expected_float_binary in file_content)
 
+
 if __name__ == '__main__':
     unittest.main()
+
