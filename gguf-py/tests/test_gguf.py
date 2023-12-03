@@ -7,7 +7,6 @@ import struct
 
 class TestGGUFWriter(unittest.TestCase):
 
-
     def test_add_uint8(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             file_path = os.path.join(temp_dir, "test0.gguf")
@@ -98,7 +97,5 @@ class TestGGUFWriter(unittest.TestCase):
                 expected_float_binary = struct.pack('f', value_to_write)
                 self.assertTrue(expected_float_binary in file_content)
 
-
 if __name__ == '__main__':
     unittest.main()
-
