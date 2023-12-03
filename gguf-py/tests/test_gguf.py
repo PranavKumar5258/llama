@@ -6,6 +6,8 @@ import numpy as np
 import struct
 
 class TestGGUFWriter(unittest.TestCase):
+
+
     def test_add_uint8(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             file_path = os.path.join(temp_dir, "test0.gguf")
