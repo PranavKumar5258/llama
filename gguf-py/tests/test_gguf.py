@@ -5,8 +5,8 @@ from gguf import GGUFWriter
 import numpy as np
 import struct
 
-class TestGGUFWriter(unittest.TestCase):
 
+class TestGGUFWriter(unittest.TestCase):
 
     def test_add_uint8(self):
         with tempfile.TemporaryDirectory() as temp_dir:
