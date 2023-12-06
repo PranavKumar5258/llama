@@ -1,13 +1,13 @@
-import unittest
 import os
-import tempfile
 import struct
-from gguf import GGUFWriter
+import tempfile
+import unittest
+
 import numpy as np
+from gguf import GGUFWriter
 
 
 class TestGGUFWriter(unittest.TestCase):
-
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
 
