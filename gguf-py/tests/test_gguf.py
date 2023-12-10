@@ -22,6 +22,7 @@ class TestGGUFWriter(unittest.TestCase):
                 self.assertTrue(content in file_content)
 
     def write_and_check_content(self, file_path, gguf_writer, expected_content):
+        gguf_writer.write_header_to_file()
         gguf_writer.write_kv_data_to_file()
         gguf_writer.close()
         self._check_file_content(file_path, expected_content)
@@ -47,6 +48,7 @@ class TestGGUFWriter(unittest.TestCase):
     def test_write_tensors_to_file(self):
         file_path = os.path.join(self.temp_dir.name, "test3.gguf")
         gguf_writer = GGUFWriter(file_path, "gpt2")
+        gguf_writer.write_header_to_file()
         tensor_data = np.full((10, 10), 1.0, dtype=np.float32)
         gguf_writer.add_tensor("test_tensor", tensor_data)
         gguf_writer.write_tensors_to_file()
@@ -71,6 +73,7 @@ class TestGGUFWriter(unittest.TestCase):
         gguf_writer = GGUFWriter(file_path, "gpt2")
         value_to_write = 3.1415926
         gguf_writer.add_float32("test_float32", value_to_write)
+        gguf_writer.write_header_to_file()
         gguf_writer.write_kv_data_to_file()
         expected_float_binary = struct.pack('f', value_to_write)
         self.write_and_check_content(file_path, gguf_writer, [b"test_float32", expected_float_binary])
