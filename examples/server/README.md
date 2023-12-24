@@ -148,6 +148,8 @@ node index.js
 
     `frequency_penalty`: Repeat alpha frequency penalty (default: 0.0, 0.0 = disabled);
 
+    `penalty_prompt`: This will replace the `prompt` for the purpose of the penalty evaluation. Can be either `null`, a string or an array of numbers representing tokens (default: `null` = use the original `prompt`).
+
     `mirostat`: Enable Mirostat sampling, controlling perplexity during text generation (default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0).
 
     `mirostat_tau`: Set the Mirostat target entropy, parameter tau (default: 5.0).
@@ -222,7 +224,7 @@ node index.js
 
     `content`: Set the text to process.
 
-    **POST** `/infill`: For code infilling. Takes a prefix and a suffix and returns the predicted completion as stream.
+-   **POST** `/infill`: For code infilling. Takes a prefix and a suffix and returns the predicted completion as stream.
 
     *Options:*
 
