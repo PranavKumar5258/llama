@@ -62,7 +62,9 @@ extern "C" {
         LLAMA_VOCAB_TYPE_NONE = 0, // For models without vocab
         LLAMA_VOCAB_TYPE_SPM  = 1, // SentencePiece
         LLAMA_VOCAB_TYPE_BPE  = 2, // Byte Pair Encoding
-        LLAMA_VOCAB_TYPE_WPM  = 3, // WordPiece
+        LLAMA_VOCAB_TYPE_DEEPSEEKCODER = 3, // Deepseek Coder
+        LLAMA_VOCAB_TYPE_DEEPSEEKLLM   = 4, // Deepseek LLM
+        LLAMA_VOCAB_TYPE_WPM  = 5, // WordPiece
     };
 
     // note: these values should be synchronized with ggml_rope
