@@ -8,7 +8,8 @@ Command line options:
 - `-tb N, --threads-batch N`: Set the number of threads to use during batch and prompt processing. If not specified, the number of threads will be set to the number of threads used for generation.
 - `-m FNAME`, `--model FNAME`: Specify the path to the LLaMA model file (e.g., `models/7B/ggml-model.gguf`).
 - `-a ALIAS`, `--alias ALIAS`: Set an alias for the model. The alias will be returned in API responses.
-- `-c N`, `--ctx-size N`: Set the size of the prompt context. The default is 512, but LLaMA models were built with a context of 2048, which will provide better results for longer input/inference. The size may differ in other models, for example, baichuan models were build with a context of 4096.
+- `-c N`, `--ctx-size N`: Deprecated, use `--kv-size` instead.
+- `-kv N`, `--kv-size N`: Specify the total size of the KV cache. This corresponds to the total amount of tokens that can be stored across all independent sequences / slots. `llama.cpp` implements a "unified" cache strategy, the KV cache size is actually shared across all sequences. It's allowed to have sequences with more than `T` tokens as long as the sum of all tokens does not exceed `P*T`. The default is 512.
 - `-ngl N`, `--n-gpu-layers N`: When compiled with appropriate support (currently CLBlast or cuBLAS), this option allows offloading some layers to the GPU for computation. Generally results in increased performance.
 - `-mg i, --main-gpu i`: When using multiple GPUs this option controls which GPU is used for small tensors for which the overhead of splitting the computation across all GPUs is not worthwhile. The GPU in question will use slightly more VRAM to store a scratch buffer for temporary results. By default GPU 0 is used. Requires cuBLAS.
 - `-ts SPLIT, --tensor-split SPLIT`: When using multiple GPUs this option controls how large tensors should be split across all GPUs. `SPLIT` is a comma-separated list of non-negative values that assigns the proportion of data that each GPU should get in order. For example, "3,2" will assign 60% of the data to GPU 0 and 40% to GPU 1. By default the data is split in proportion to VRAM but this may not be optimal for performance. Requires cuBLAS.
@@ -33,7 +34,7 @@ see https://github.com/ggerganov/llama.cpp/issues/1437
 - `--api-key`: Set an api key for request authorization. By default the server responds to every request. With an api key set, the requests must have the Authorization header set with the api key as Bearer token. May be used multiple times to enable multiple valid keys.
 - `--api-key-file`: path to file containing api keys delimited by new lines. If set, requests must include one of the keys for access. May be used in conjunction with `--api-key`'s.
 - `--embedding`: Enable embedding extraction, Default: disabled.
-- `-np N`, `--parallel N`: Set the number of slots for process requests (default: 1)
+- `-np N`, `--parallel N`: Set the number of slots / sequences for process requests (default: 1). Each sequence can have a maximum of `T` tokens, use together with `--kv-size`.
 - `-cb`, `--cont-batching`: enable continuous batching (a.k.a dynamic batching) (default: disabled)
 - `-spf FNAME`, `--system-prompt-file FNAME` Set a file to load "a system prompt (initial prompt of all slots), this is useful for chat applications. [See more](#change-system-prompt-on-runtime)
 - `--mmproj MMPROJ_FILE`: Path to a multimodal projector file for LLaVA.
@@ -176,7 +177,7 @@ node index.js
 
     `repeat_penalty`: Control the repetition of token sequences in the generated text (default: 1.1).
 
-    `repeat_last_n`: Last n tokens to consider for penalizing repetition (default: 64, 0 = disabled, -1 = ctx-size).
+    `repeat_last_n`: Last n tokens to consider for penalizing repetition (default: 64, 0 = disabled, -1 = kv-size).
 
     `penalize_nl`: Penalize newline tokens when applying the repeat penalty (default: true).
 
@@ -241,7 +242,7 @@ Notice that each `probs` is an array of length `n_probs`.
 
 - `content`: Completion result as a string (excluding `stopping_word` if any). In case of streaming mode, will contain the next token as a string.
 - `stop`: Boolean for use with `stream` to check whether the generation has stopped (Note: This is not related to stopping words array `stop` from input options)
-- `generation_settings`: The provided options above excluding `prompt` but including `n_ctx`, `model`
+- `generation_settings`: The provided options above excluding `prompt` but including `kv_size`, `model`
 - `model`: The path to the model loaded with `-m`
 - `prompt`: The provided `prompt`
 - `stopped_eos`: Indicating whether the completion has stopped because it encountered the EOS token
@@ -251,7 +252,7 @@ Notice that each `probs` is an array of length `n_probs`.
 - `timings`: Hash of timing information about the completion such as the number of tokens `predicted_per_second`
 - `tokens_cached`: Number of tokens from the prompt which could be re-used from previous completion (`n_past`)
 - `tokens_evaluated`: Number of tokens evaluated in total from the prompt
-- `truncated`: Boolean indicating if the context size was exceeded during generation, i.e. the number of tokens provided in the prompt (`tokens_evaluated`) plus tokens generated (`tokens predicted`) exceeded the context size (`n_ctx`)
+- `truncated`: Boolean indicating if the context size was exceeded during generation, i.e. the number of tokens provided in the prompt (`tokens_evaluated`) plus tokens generated (`tokens predicted`) exceeded the KV size (`kv_size`)
 
 - **POST** `/tokenize`: Tokenize a given text.
 
@@ -406,7 +407,7 @@ Notice that each `probs` is an array of length `n_probs`.
         "mirostat_eta": 0.10000000149011612,
         "mirostat_tau": 5.0,
         "model": "llama-2-7b-32k-instruct.Q2_K.gguf",
-        "n_ctx": 2048,
+        "kv_size": 2048,
         "n_keep": 0,
         "n_predict": 100000,
         "n_probs": 0,
