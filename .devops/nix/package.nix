@@ -36,6 +36,7 @@
   # otherwise we get libstdc++ errors downstream.
   effectiveStdenv ? if useCuda then cudaPackages.backendStdenv else stdenv,
   enableStatic ? effectiveStdenv.hostPlatform.isStatic,
+  gguf-py,
 }@inputs:
 
 let
@@ -64,24 +65,6 @@ let
   descriptionSuffix = strings.optionalString (
     suffices != [ ]
   ) ", accelerated with ${strings.concatStringsSep ", " suffices}";
-
-  gguf-py = python3.pkgs.buildPythonPackage rec {
-    pname = "gguf";
-    version = "0.0.0";
-    pyproject = true;
-    nativeBuildInputs = with python3.pkgs; [ poetry-core ];
-    # buildInputs = [
-    #   python3.pkgs.poetry-core
-    # ];
-    propagatedBuildInputs = with python3.pkgs; [ numpy ];
-    src = lib.cleanSource ../../gguf-py;
-    doCheck = false;
-    meta = with lib; {
-      description = "Python package for writing binary files in the GGU format";
-      license = licenses.mit;
-      maintainers = [ maintainers.philiptaron ];
-    };
-  };
 
   # TODO: package the Python in this repository in a Nix-like way.
   # It'd be nice to migrate to buildPythonPackage, as well as ensure this repo
