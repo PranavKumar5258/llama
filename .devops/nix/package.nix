@@ -66,24 +66,27 @@ let
     suffices != [ ]
   ) ", accelerated with ${strings.concatStringsSep ", " suffices}";
 
+  mapToPythonPackages = ps: packages: map (package: ps.${package}) packages;
+
   # TODO: package the Python in this repository in a Nix-like way.
   # It'd be nice to migrate to buildPythonPackage, as well as ensure this repo
   # is PEP 517-compatible, and ensure the correct .dist-info is generated.
   # https://peps.python.org/pep-0517/
-  llama-python = python3.withPackages (ps: [
-    ps.numpy
-    ps.sentencepiece
-    gguf-py
-  ]);
+  llama-python-base-deps = [
+    "numpy"
+    "sentencepiece"
+  ];
 
   # TODO(Green-Sky): find a better way to opt-into the heavy ml python runtime
-  llama-python-extra = python3.withPackages (ps: [
-    ps.numpy
-    ps.sentencepiece
-    ps.tiktoken
-    ps.torchWithoutCuda
-    ps.transformers
-  ]);
+  llama-python-full-deps = llama-python-base-deps ++ [
+    "tiktoken"
+    "torchWithoutCuda"
+    "transformers"
+  ];
+
+  llama-python-base-with-gguf = python3.withPackages (
+    ps: (mapToPythonPackages ps llama-python-base-deps) ++ [ gguf-py ]
+  );
 
   # apple_sdk is supposed to choose sane defaults, no need to handle isAarch64
   # separately
@@ -151,7 +154,7 @@ effectiveStdenv.mkDerivation (finalAttrs: {
     # TODO: Package up each Python script or service appropriately.
     # If we were to migrate to buildPythonPackage and prepare the `pyproject.toml`,
     # we could make those *.py into setuptools' entrypoints
-    substituteInPlace ./*.py --replace "/usr/bin/env python" "${llama-python}/bin/python"
+    substituteInPlace ./*.py --replace "/usr/bin/env python" "${llama-python-base-with-gguf}/bin/python"
   '';
 
   nativeBuildInputs =
@@ -238,7 +241,10 @@ effectiveStdenv.mkDerivation (finalAttrs: {
     shell = mkShell {
       name = "shell-${finalAttrs.finalPackage.name}";
       description = "contains numpy and sentencepiece";
-      buildInputs = [ llama-python ];
+      buildInputs = [
+        python3.withPackages
+        (ps: mapToPythonPackages ps llama-python-base-deps)
+      ];
       inputsFrom = [ finalAttrs.finalPackage ];
       shellHook = ''
         addToSearchPath "LD_LIBRARY_PATH" "${lib.getLib effectiveStdenv.cc.cc}/lib"
@@ -248,7 +254,10 @@ effectiveStdenv.mkDerivation (finalAttrs: {
     shell-extra = mkShell {
       name = "shell-extra-${finalAttrs.finalPackage.name}";
       description = "contains numpy, sentencepiece, torchWithoutCuda, and transformers";
-      buildInputs = [ llama-python-extra ];
+      buildInputs = [
+        python3.withPackages
+        (ps: mapToPythonPackages ps llama-python-full-deps)
+      ];
       inputsFrom = [ finalAttrs.finalPackage ];
     };
   };
