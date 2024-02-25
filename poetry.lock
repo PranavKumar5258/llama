@@ -203,17 +203,19 @@ tqdm = ["tqdm"]
 
 [[package]]
 name = "gguf"
-version = "0.6.0"
+version = "0.7.0"
 description = "Read and write ML models in GGUF for GGML"
 optional = false
 python-versions = ">=3.8"
-files = [
-    {file = "gguf-0.6.0-py3-none-any.whl", hash = "sha256:7ef6d0cf27b3cc4f11397140be7cf45b5904b751331ea9453839a17004f06762"},
-    {file = "gguf-0.6.0.tar.gz", hash = "sha256:b2e22eaba2a106c1ad148186a14ad9f29c429351686fe9d7ce16df39a0607e65"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 numpy = ">=1.17"
+
+[package.source]
+type = "directory"
+url = "gguf-py"
 
 [[package]]
 name = "huggingface-hub"
@@ -1367,4 +1369,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8"
-content-hash = "f98222fe44f8382cfcb4b7c543e8024bad78a71198e7b776c28e69cf85c40983"
+content-hash = "21fffad2c49d29eb318abe836bbcb8de583ea41cf198dbb981a943a70448fcf6"
