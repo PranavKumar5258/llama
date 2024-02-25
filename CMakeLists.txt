@@ -1193,28 +1193,6 @@ install(TARGETS ggml PUBLIC_HEADER)
 set_target_properties(llama PROPERTIES PUBLIC_HEADER ${CMAKE_CURRENT_SOURCE_DIR}/llama.h)
 install(TARGETS llama LIBRARY PUBLIC_HEADER)
 
-install(
-    FILES convert.py
-    PERMISSIONS
-        OWNER_READ
-        OWNER_WRITE
-        OWNER_EXECUTE
-        GROUP_READ
-        GROUP_EXECUTE
-        WORLD_READ
-        WORLD_EXECUTE
-    DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(
-    FILES convert-lora-to-ggml.py
-    PERMISSIONS
-        OWNER_READ
-        OWNER_WRITE
-        OWNER_EXECUTE
-        GROUP_READ
-        GROUP_EXECUTE
-        WORLD_READ
-        WORLD_EXECUTE
-    DESTINATION ${CMAKE_INSTALL_BINDIR})
 if (LLAMA_METAL)
     install(
         FILES ggml-metal.metal
