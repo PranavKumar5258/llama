@@ -109,9 +109,7 @@
         # Cf. https://nixos.org/manual/nix/unstable/command-ref/new-cli/nix3-flake.html?highlight=flake#flake-format
         flake.overlays.default = (
           final: prev: {
-            llamaPackages = final.callPackage .devops/nix/scope.nix {
-              inherit llamaVersion;
-            };
+            llamaPackages = final.callPackage .devops/nix/scope.nix { inherit llamaVersion; };
             inherit (final.llamaPackages) llama-cpp;
           }
         );
@@ -147,18 +145,9 @@
             # access them as `nix build .#llamaPackages.${scriptName}` using
             # the same path you would with an overlay.
             legacyPackages = {
-              llamaPackages = pkgs.callPackage .devops/nix/scope.nix {
-                inherit llamaVersion;
-                poetry2nix = import inputs.poetry2nix { pkgs = pkgs; };
-              };
-              llamaPackagesCuda = pkgsCuda.callPackage .devops/nix/scope.nix {
-                inherit llamaVersion;
-                poetry2nix = import inputs.poetry2nix { pkgs = pkgs; };
-              };
-              llamaPackagesRocm = pkgsRocm.callPackage .devops/nix/scope.nix {
-                inherit llamaVersion;
-                poetry2nix = import inputs.poetry2nix { pkgs = pkgs; };
-              };
+              llamaPackages = pkgs.callPackage .devops/nix/scope.nix { inherit llamaVersion; };
+              llamaPackagesCuda = pkgsCuda.callPackage .devops/nix/scope.nix { inherit llamaVersion; };
+              llamaPackagesRocm = pkgsRocm.callPackage .devops/nix/scope.nix { inherit llamaVersion; };
             };
 
             # We don't use the overlay here so as to avoid making too many instances of nixpkgs,

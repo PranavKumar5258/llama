@@ -3,7 +3,6 @@
   newScope,
   python3,
   llamaVersion ? "0.0.0",
-  poetry2nix,
 }:
 
 let
@@ -28,9 +27,7 @@ lib.makeScope newScope (self: {
       pytestCheckHook
       ;
   };
-  python-scripts = self.callPackage ./python-scripts.nix {
-    inherit buildPythonPackage poetry-core poetry2nix;
-  };
+  python-scripts = self.callPackage ./python-scripts.nix { inherit buildPythonPackage poetry-core; };
   llama-cpp = self.callPackage ./package.nix { };
   docker = self.callPackage ./docker.nix { };
   docker-min = self.callPackage ./docker.nix { interactive = false; };

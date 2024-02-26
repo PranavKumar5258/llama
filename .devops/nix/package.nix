@@ -84,10 +84,6 @@ let
     "transformers"
   ];
 
-  llama-python-base-with-gguf = python3.withPackages (
-    ps: (mapToPythonPackages ps llama-python-base-deps) ++ [ gguf-py ]
-  );
-
   # apple_sdk is supposed to choose sane defaults, no need to handle isAarch64
   # separately
   darwinBuildInputs =
@@ -150,11 +146,6 @@ effectiveStdenv.mkDerivation (finalAttrs: {
   postPatch = ''
     substituteInPlace ./ggml-metal.m \
       --replace '[bundle pathForResource:@"ggml-metal" ofType:@"metal"];' "@\"$out/bin/ggml-metal.metal\";"
-
-    # TODO: Package up each Python script or service appropriately.
-    # If we were to migrate to buildPythonPackage and prepare the `pyproject.toml`,
-    # we could make those *.py into setuptools' entrypoints
-    # substituteInPlace ./*.py --replace "/usr/bin/env python" "${llama-python-base-with-gguf}/bin/python"
   '';
 
   nativeBuildInputs =
