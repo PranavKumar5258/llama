@@ -156,6 +156,7 @@
               {
                 default = config.legacyPackages.llamaPackages.llama-cpp;
                 vulkan = config.packages.default.override { useVulkan = true; };
+                python-scripts = config.legacyPackages.llamaPackages.python-scripts;
               }
               // lib.optionalAttrs pkgs.stdenv.isLinux {
                 opencl = config.packages.default.override { useOpenCL = true; };

@@ -5,6 +5,7 @@
   stdenv,
   mkShell,
   cmake,
+  gcc,
   ninja,
   pkg-config,
   git,
@@ -65,24 +66,6 @@ let
   descriptionSuffix = strings.optionalString (
     suffices != [ ]
   ) ", accelerated with ${strings.concatStringsSep ", " suffices}";
-
-  mapToPythonPackages = ps: packages: map (package: ps.${package}) packages;
-
-  # TODO: package the Python in this repository in a Nix-like way.
-  # It'd be nice to migrate to buildPythonPackage, as well as ensure this repo
-  # is PEP 517-compatible, and ensure the correct .dist-info is generated.
-  # https://peps.python.org/pep-0517/
-  llama-python-base-deps = [
-    "numpy"
-    "sentencepiece"
-  ];
-
-  # TODO(Green-Sky): find a better way to opt-into the heavy ml python runtime
-  llama-python-full-deps = llama-python-base-deps ++ [
-    "tiktoken"
-    "torchWithoutCuda"
-    "transformers"
-  ];
 
   # apple_sdk is supposed to choose sane defaults, no need to handle isAarch64
   # separately
@@ -233,21 +216,8 @@ effectiveStdenv.mkDerivation (finalAttrs: {
       name = "shell-${finalAttrs.finalPackage.name}";
       description = "contains numpy and sentencepiece";
       buildInputs = [
-        python3.withPackages
-        (ps: mapToPythonPackages ps llama-python-base-deps)
-      ];
-      inputsFrom = [ finalAttrs.finalPackage ];
-      shellHook = ''
-        addToSearchPath "LD_LIBRARY_PATH" "${lib.getLib effectiveStdenv.cc.cc}/lib"
-      '';
-    };
-
-    shell-extra = mkShell {
-      name = "shell-extra-${finalAttrs.finalPackage.name}";
-      description = "contains numpy, sentencepiece, torchWithoutCuda, and transformers";
-      buildInputs = [
-        python3.withPackages
-        (ps: mapToPythonPackages ps llama-python-full-deps)
+        cmake
+        gcc
       ];
       inputsFrom = [ finalAttrs.finalPackage ];
     };
