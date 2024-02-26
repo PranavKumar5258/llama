@@ -7,7 +7,7 @@ readme = "README.md"
 homepage = "https://ggml.ai"
 repository = "https://github.com/ggerganov/llama.cpp"
 keywords = ["ggml", "gguf", "llama.cpp"]
-packages = [{ include = "__init__.py", from = "." }]
+packages = [{ include = "bin"}]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -15,25 +15,30 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8"
-gguf = { path = "./gguf-py" }
-numpy = ">=1.24.4,<1.25.0"
+python = ">=3.9"
+numpy = "^1.25.0"
 sentencepiece = ">=0.1.98,<0.2.0"
 transformers = ">=4.35.2,<5.0.0"
 protobuf = ">=4.21.0,<5.0.0"
-torch = "2.1.1"
+gguf = { path = "./gguf-py" }
+torch = {version = "^2.2.1", source = "pytorch"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-llama-convert-hf-to-gguf = "convert-hf-to-gguf:main"
-llama-convert-llama-ggml-to-gguf = "convert-llama-ggml-to-gguf:main"
-llama-convert-lora-to-ggml = "convert-lora-to-ggml:main"
-llama-convert-persimmon-to-gguf = "convert-persimmon-to-gguf:main"
-llama-convert = "convert:main"
-llama-ggml_vk_generate_shaders = "ggml_vk_generate_shaders:main"
+llama-convert-hf-to-gguf = "bin.convert_hf_to_gguf:main"
+llama-convert-llama-ggml-to-gguf = "bin.convert_llama_ggml_to_gguf:main"
+llama-convert-lora-to-ggml = "bin.convert_lora_to_ggml:main"
+llama-convert-persimmon-to-gguf = "bin.convert_persimmon_to_gguf:main"
+llama-convert = "bin.convert:main"
+llama-ggml_vk_generate_shaders = "bin.ggml_vk_generate_shaders:main"

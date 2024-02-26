@@ -154,7 +154,7 @@ effectiveStdenv.mkDerivation (finalAttrs: {
     # TODO: Package up each Python script or service appropriately.
     # If we were to migrate to buildPythonPackage and prepare the `pyproject.toml`,
     # we could make those *.py into setuptools' entrypoints
-    substituteInPlace ./*.py --replace "/usr/bin/env python" "${llama-python-base-with-gguf}/bin/python"
+    # substituteInPlace ./*.py --replace "/usr/bin/env python" "${llama-python-base-with-gguf}/bin/python"
   '';
 
   nativeBuildInputs =

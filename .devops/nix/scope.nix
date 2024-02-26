@@ -3,6 +3,7 @@
   newScope,
   python3,
   llamaVersion ? "0.0.0",
+  poetry2nix,
 }:
 
 let
@@ -19,7 +20,6 @@ in
 
 lib.makeScope newScope (self: {
   inherit llamaVersion;
-  pp = python3.pkgs;
   gguf-py = self.callPackage ./package-gguf-py.nix {
     inherit
       buildPythonPackage
@@ -27,6 +27,9 @@ lib.makeScope newScope (self: {
       poetry-core
       pytestCheckHook
       ;
+  };
+  python-scripts = self.callPackage ./python-scripts.nix {
+    inherit buildPythonPackage poetry-core poetry2nix;
   };
   llama-cpp = self.callPackage ./package.nix { };
   docker = self.callPackage ./docker.nix { };

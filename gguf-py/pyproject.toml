@@ -4,9 +4,9 @@ version = "0.7.0"
 description = "Read and write ML models in GGUF for GGML"
 authors = ["GGML <ggml@ggml.ai>"]
 packages = [
-    {include = "gguf"},
-    {include = "gguf/py.typed"},
-    {include = "scripts"},
+    { include = "gguf" },
+    { include = "gguf/py.typed" },
+    { include = "scripts" },
 ]
 readme = "README.md"
 homepage = "https://ggml.ai"

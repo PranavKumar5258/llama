@@ -352,7 +352,7 @@ class GGMLToGGUF:
 
 
 def handle_metadata(cfg, hp):
-    import convert
+    import bin.convert as convert
     assert cfg.model_metadata_dir.is_dir(), 'Metadata dir is not a directory'
     hf_config_path   = cfg.model_metadata_dir / "config.json"
     orig_config_path = cfg.model_metadata_dir / "params.json"
