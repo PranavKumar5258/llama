@@ -89,6 +89,6 @@ perf-*.txt
 
 examples/jeopardy/results.txt
 
-poetry.lock
+*/poetry.lock
 poetry.toml
 nppBackup
