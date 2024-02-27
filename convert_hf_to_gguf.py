@@ -23,7 +23,7 @@ if 'NO_LOCAL_GGUF' not in os.environ:
     sys.path.insert(1, str(Path(__file__).parent / 'gguf-py'))
 import gguf
 
-from bin.convert import HfVocab
+from convert import HfVocab
 
 
 ###### MODEL DEFINITIONS ######
