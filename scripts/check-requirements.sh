@@ -167,7 +167,7 @@ if (( do_cleanup )); then
 fi
 
 check_convert_script convert.py
-for py in convert-*.py; do
+for py in convert_*.py; do
     check_convert_script "$py"
 done
 

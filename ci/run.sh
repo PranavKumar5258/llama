@@ -340,7 +340,7 @@ function gg_run_open_llama_3b_v2 {
     gg_wget ${path_lora} https://huggingface.co/slaren/open_llama_3b_v2_shakespeare_lora/resolve/main/adapter_model.bin
     gg_wget ${path_shakespeare} https://huggingface.co/slaren/open_llama_3b_v2_shakespeare_lora/resolve/main/shakespeare.txt
 
-    python3 ../convert-lora-to-ggml.py ${path_lora}
+    python3 ../convert_lora_to_ggml.py ${path_lora}
 
     # f16
     (time ./bin/perplexity --model ${model_f16} -f ${shakespeare}                            -c 128 -b 128 --chunks 2 ) 2>&1 | tee -a $OUT/${ci}-ppl-shakespeare-f16.log
@@ -521,7 +521,7 @@ function gg_run_open_llama_7b_v2 {
     gg_wget ${path_lora} https://huggingface.co/slaren/open_llama_7b_v2_shakespeare_lora/resolve/main/adapter_model.bin
     gg_wget ${path_shakespeare} https://huggingface.co/slaren/open_llama_7b_v2_shakespeare_lora/resolve/main/shakespeare.txt
 
-    python3 ../convert-lora-to-ggml.py ${path_lora}
+    python3 ../convert_lora_to_ggml.py ${path_lora}
 
     # f16
     (time ./bin/perplexity --model ${model_f16} -f ${shakespeare}                            -t 1 -ngl 999 -c 2048 -b 512 --chunks 3 ) 2>&1 | tee -a $OUT/${ci}-ppl-shakespeare-f16.log
@@ -594,7 +594,7 @@ function gg_run_embd_bge_small {
     (time cmake -DCMAKE_BUILD_TYPE=Release ${CMAKE_EXTRA} .. ) 2>&1 | tee -a $OUT/${ci}-cmake.log
     (time make -j                                            ) 2>&1 | tee -a $OUT/${ci}-make.log
 
-    python3 ../convert-hf-to-gguf.py ${path_models}
+    python3 ../convert_hf_to_gguf.py ${path_models}
 
     model_f16="${path_models}/ggml-model-f16.gguf"
     model_q8_0="${path_models}/ggml-model-q8_0.gguf"
