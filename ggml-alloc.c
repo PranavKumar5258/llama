@@ -412,7 +412,7 @@ void ggml_gallocr_free(ggml_gallocr_t galloc) {
         }
     }
 
-    free(galloc->hash_set.keys);
+    ggml_hash_set_free(galloc->hash_set);
     free(galloc->hash_values);
     free(galloc->bufts);
     free(galloc->buffers);
@@ -425,7 +425,7 @@ void ggml_gallocr_free(ggml_gallocr_t galloc) {
 typedef struct ggml_gallocr * ggml_gallocr_t;
 
 static struct hash_node * ggml_gallocr_hash_get(ggml_gallocr_t galloc, struct ggml_tensor * t) {
-    size_t i = ggml_hash_find_or_insert(galloc->hash_set, t);
+    size_t i = ggml_hash_find_or_insert(&galloc->hash_set, t);
     return &galloc->hash_values[i];
 }
 
@@ -533,7 +533,7 @@ static int get_node_buffer_id(const int * node_buffer_ids, int i) {
 
 static void ggml_gallocr_alloc_graph_impl(ggml_gallocr_t galloc, struct ggml_cgraph * graph, const int * node_buffer_ids, const int * leaf_buffer_ids) {
     // clear hash tables
-    memset(galloc->hash_set.keys, 0, galloc->hash_set.size * sizeof(struct ggml_tensor *));
+    ggml_hash_set_reset(galloc->hash_set);
     memset(galloc->hash_values,   0, galloc->hash_set.size * sizeof(struct hash_node));
 
     // allocate leafs
@@ -639,20 +639,22 @@ static void ggml_gallocr_alloc_graph_impl(ggml_gallocr_t galloc, struct ggml_cgr
 }
 
 bool ggml_gallocr_reserve_n(ggml_gallocr_t galloc, struct ggml_cgraph * graph, const int * node_buffer_ids, const int * leaf_buffer_ids) {
-    size_t hash_size = graph->visited_hash_table.size;
+    size_t min_hash_size = graph->n_nodes + graph->n_leafs;
+    min_hash_size += min_hash_size / 4; // 25% more to avoid too many hash collisions
+    //size_t hash_size = graph->visited_hash_table.size;
 
     // initialize hash table
-    if (galloc->hash_set.size < hash_size) {
-        free(galloc->hash_set.keys);
-        free(galloc->hash_values);
-        galloc->hash_set.size = hash_size;
-        galloc->hash_set.keys = calloc(sizeof(struct ggml_tensor *), hash_size);
-        galloc->hash_values   = calloc(sizeof(struct hash_node), hash_size);
+    if (galloc->hash_set.size < min_hash_size) {
+        ggml_hash_set_free(galloc->hash_set);
+        galloc->hash_set = ggml_hash_set_new(min_hash_size);
         GGML_ASSERT(galloc->hash_set.keys != NULL);
+
+        free(galloc->hash_values);
+        galloc->hash_values = calloc(sizeof(struct hash_node), galloc->hash_set.size);
         GGML_ASSERT(galloc->hash_values != NULL);
     } else {
         // reset hash table
-        memset(galloc->hash_set.keys, 0, sizeof(struct ggml_tensor *) * galloc->hash_set.size);
+        ggml_hash_set_reset(galloc->hash_set);
         memset(galloc->hash_values,   0, sizeof(struct hash_node) * galloc->hash_set.size);
     }
 

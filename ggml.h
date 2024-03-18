@@ -622,6 +622,7 @@ extern "C" {
 
     struct ggml_hash_set {
         size_t size;
+        bool * used;
         struct ggml_tensor ** keys;
     };
 

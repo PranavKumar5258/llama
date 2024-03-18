@@ -248,17 +248,101 @@ inline static float ggml_lookup_fp16_to_fp32(ggml_fp16_t f) {
 #define GGML_HASHTABLE_ALREADY_EXISTS ((size_t)-2)
 
 struct ggml_hash_set ggml_hash_set_new(size_t size);
+void ggml_hash_set_reset(struct ggml_hash_set hash_set);
+void ggml_hash_set_free(struct ggml_hash_set hash_set);
 
-bool   ggml_hash_contains      (const struct ggml_hash_set hash_set, struct ggml_tensor * key);
+
+static inline bool   ggml_hash_contains      (const struct ggml_hash_set * hash_set, struct ggml_tensor * key);
 
 // returns GGML_HASHTABLE_FULL if table is full, otherwise the current index of the key or where it should be inserted
-size_t ggml_hash_find          (const struct ggml_hash_set hash_set, struct ggml_tensor * key);
+static inline size_t ggml_hash_find          (const struct ggml_hash_set * hash_set, struct ggml_tensor * key);
 
 // returns GGML_HASHTABLE_ALREADY_EXISTS if key already exists, index otherwise, asserts if table is full
-size_t ggml_hash_insert        (      struct ggml_hash_set hash_set, struct ggml_tensor * key);
+static inline size_t ggml_hash_insert        (      struct ggml_hash_set * hash_set, struct ggml_tensor * key);
 
 // return index, asserts if table is full
-size_t ggml_hash_find_or_insert(      struct ggml_hash_set hash_set, struct ggml_tensor * key);
+static inline size_t ggml_hash_find_or_insert(      struct ggml_hash_set * hash_set, struct ggml_tensor * key);
+
+static size_t ggml_hash_size(size_t min_sz) {
+    if ((min_sz & (min_sz - 1)) == 0) {
+        return min_sz;
+    }
+
+    // next power of two
+    size_t sz = 1;
+    while (sz < min_sz) {
+        sz *= 2;
+    }
+    return sz;
+}
+
+// mx3 mix by Jon Maiga
+static inline uint64_t ggml_hash_64(uint64_t x) {
+    const uint64_t C = 0xbea225f9eb34556d;
+
+	x ^= x >> 32;
+	x *= C;
+	x ^= x >> 29;
+	x *= C;
+	x ^= x >> 32;
+	x *= C;
+	x ^= x >> 29;
+	return x;
+}
+
+static inline size_t ggml_hash(const void * p) {
+    //return (size_t) p;
+    return (size_t)ggml_hash_64((uint64_t) p);
+}
+
+static inline size_t ggml_hash_find(const struct ggml_hash_set * hash_set, struct ggml_tensor * key) {
+    //size_t h = ggml_hash(key) % hash_set.size;
+    size_t h = ggml_hash(key) & (hash_set->size - 1);
+
+    // linear probing
+    size_t i = h;
+    while (hash_set->used[i] && hash_set->keys[i] != key) {
+        //i = (i + 1) % hash_set.size;
+        i = (i + 1) & (hash_set->size - 1);
+        if (i == h) {
+            // visited all hash table entries -> not found
+            return GGML_HASHTABLE_FULL;
+        }
+    }
+    return i;
+}
+
+static inline bool ggml_hash_contains(const struct ggml_hash_set * hash_set, struct ggml_tensor * key) {
+    size_t i = ggml_hash_find(hash_set, key);
+    return i != GGML_HASHTABLE_FULL && hash_set->used[i] && hash_set->keys[i] == key;
+}
+
+static inline size_t ggml_hash_insert(struct ggml_hash_set * hash_set, struct ggml_tensor * key) {
+    size_t i = ggml_hash_find(hash_set, key);
+
+    GGML_ASSERT(i != GGML_HASHTABLE_FULL);
+
+    if (hash_set->used[i] && hash_set->keys[i] == key) {
+        return GGML_HASHTABLE_ALREADY_EXISTS;
+    }
+
+    // insert
+    GGML_ASSERT(hash_set->used[i] == false);
+
+    hash_set->used[i] = true;
+    hash_set->keys[i] = key;
+    return i;
+}
+
+static inline size_t ggml_hash_find_or_insert(struct ggml_hash_set * hash_set, struct ggml_tensor * key) {
+    size_t i = ggml_hash_find(hash_set, key);
+
+    GGML_ASSERT(i != GGML_HASHTABLE_FULL);
+
+    hash_set->used[i] = true;
+    hash_set->keys[i] = key;
+    return i;
+}
 
 #ifdef __cplusplus
 }
