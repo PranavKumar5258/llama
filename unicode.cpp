@@ -6,6 +6,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <locale>
+#include <codecvt>
 
 static const std::vector<std::pair<uint32_t, uint32_t>> unicode_ranges_digit = {
 {0x00000030, 0x00000039}, {0x000000B2, 0x000000B3}, {0x000000B9, 0x000000B9}, {0x00000660, 0x00000669},
