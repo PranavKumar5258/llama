@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <locale>
+#include <codecvt>
 
 #define CODEPOINT_TYPE_UNIDENTIFIED 0
 #define CODEPOINT_TYPE_DIGIT        1
@@ -24,3 +26,20 @@ int unicode_cpt_type(const std::string & utf8);
 std::string unicode_byte_to_utf8(uint8_t byte);
 uint8_t unicode_utf8_to_byte(const std::string & utf8);
 
+std::vector<std::wstring> get_gpt2_regex();
+std::vector<std::wstring> get_deepseek_coder_regex();
+std::vector<std::wstring> get_deepseek_llm_regex();
+
+inline std::wstring from_utf8(const std::string & s)
+{
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
+    return conv.from_bytes(s);
+}
+
+inline std::string to_utf8(const std::wstring & ws)
+{
+    // code to convert from utf32/utf16 to utf8
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>, wchar_t> converter;
+    std::string utf8 = converter.to_bytes(ws);
+    return utf8;
+}
