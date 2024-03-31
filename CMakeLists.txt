@@ -616,7 +616,8 @@ if (LLAMA_SYCL)
     endif()
 
     set(GGML_HEADERS_SYCL ggml-sycl.h)
-    set(GGML_SOURCES_SYCL ggml-sycl.cpp)
+    file(GLOB GGML_SOURCES_SYCL "ggml-sycl.cpp")
+    # list(APPEND GGML_SOURCES_SYCL "ggml-sycl/*.cpp")
 
     if (WIN32)
         set(LLAMA_EXTRA_LIBS ${LLAMA_EXTRA_LIBS} -fsycl sycl7 OpenCL mkl_sycl_blas_dll.lib mkl_intel_ilp64_dll.lib mkl_sequential_dll.lib mkl_core_dll.lib)
@@ -1251,7 +1252,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/LlamaConfig.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Llama)
 
 set(GGML_PUBLIC_HEADERS "ggml.h" "ggml-alloc.h" "ggml-backend.h"
-        "${GGML_HEADERS_CUDA}"  "${GGML_HEADERS_OPENCL}"
+        "${GGML_HEADERS_CUDA}"  "${GGML_HEADERS_OPENCL}" "${GGML_HEADERS_SYCL}"
         "${GGML_HEADERS_METAL}" "${GGML_HEADERS_MPI}" "${GGML_HEADERS_EXTRA}")
 
 set_target_properties(ggml PROPERTIES PUBLIC_HEADER "${GGML_PUBLIC_HEADERS}")
