@@ -435,192 +435,6 @@ int64_t ggml_cycles_per_ms(void) {
 #define ggml_perf_cycles_per_ms() 0
 #endif
 
-void rearrange_q4_0_weights_blocked8_neon(struct ggml_tensor * cur) {
-    block_q4_0x8 * out_ptr_B = malloc(ggml_nbytes(cur));  // B_blocked->data;
-    block_q4_0x8 * out_ptr_B_start = out_ptr_B;
-    int64_t nb = cur->ne[0] / QK4_0;
-
-    for (int y_out = 0; y_out < cur->ne[1] / 8; y_out++) {
-        const block_q4_0 * in_ptrs[8];
-
-        in_ptrs[0] = (block_q4_0 *) cur->data + (y_out * 8 * nb);
-        for (int i = 0; i < 7; i++) {
-            in_ptrs[i + 1] = in_ptrs[i] + nb;
-        }
-
-        for (int64_t x = 0; x < nb; x++) {
-            *out_ptr_B = make_block_q4_0x8(in_ptrs, 4);  // block_len=4 for SDOT
-            out_ptr_B++;
-
-            for (int i = 0; i < 8; i++) {
-                in_ptrs[i]++;
-            }
-        }
-    }
-    cur->rearranged_weight_gemv = (uint8_t *) out_ptr_B_start;
-}
-
-void rearrange_q4_0_weights_blocked8_sve(struct ggml_tensor * cur) {
-#if defined(__ARM_FEATURE_SVE)
-    if (svcntw() != 8) {
-        printf("ggml_gemv_q4_0_q8_0_blocked8_sve: SVE VL != 256 - aborting. Use Arm Neon GEMV kernels\n");
-        exit(1);
-    }
-
-    block_q4_0x8 * out_ptr_B = malloc(ggml_nbytes(cur));  // B_blocked->data;
-    block_q4_0x8 * out_ptr_B_start = out_ptr_B;
-    int64_t nb = cur->ne[0] / QK4_0;
-
-    for (int y_out = 0; y_out < cur->ne[1] / 8; y_out++) {
-        const block_q4_0 * in_ptrs[8];
-
-        in_ptrs[0] = (block_q4_0 *) cur->data + (y_out * 8 * nb);
-        for (int i = 0; i < 7; i++) {
-            in_ptrs[i + 1] = in_ptrs[i] + nb;
-        }
-
-        for (int64_t x = 0; x < nb; x++) {
-            *out_ptr_B = make_block_q4_0x8(in_ptrs, 4);  // block_len=4 for SDOT
-            out_ptr_B++;
-
-            for (int i = 0; i < 8; i++) {
-                in_ptrs[i]++;
-            }
-        }
-    }
-    cur->rearranged_weight_gemv = (uint8_t *) out_ptr_B_start;
-#endif
-}
-
-#if defined(__ARM_FEATURE_SVE)
-static void (*_rearrange_q4_0_weights_for_gemv)(struct ggml_tensor *) = &rearrange_q4_0_weights_blocked8_sve;
-#elif defined(__ARM_NEON)
-static void (*_rearrange_q4_0_weights_for_gemv)(struct ggml_tensor *) = &rearrange_q4_0_weights_blocked8_neon;
-#endif
-
-#if defined(__ARM_NEON) || defined(__ARM_FEATURE_SVE)
-void rearrange_q4_0_weights_for_gemv(struct ggml_tensor * cur) { _rearrange_q4_0_weights_for_gemv(cur); }
-#endif
-
-void rearrange_q4_0_weights_for_gemm(struct ggml_tensor * cur) {
-    block_q4_0x4 * out_ptr_B = malloc(ggml_nbytes(cur));  // B_blocked->data;
-    block_q4_0x4 * out_ptr_B_start = out_ptr_B;
-    int64_t nb = cur->ne[0] / QK4_0;
-
-    for (int y_out = 0; y_out < cur->ne[1] / 4; y_out++) {
-        const block_q4_0 * in_ptrs[4];
-
-        in_ptrs[0] = (block_q4_0 *) cur->data + (y_out * 4 * nb);
-        for (int i = 0; i < 3; i++) {
-            in_ptrs[i + 1] = in_ptrs[i] + nb;
-        }
-
-        for (int64_t x = 0; x < nb; x++) {
-            *out_ptr_B =
-                make_block_q4_0x4(in_ptrs, 8);  // block_len=8 for SMMLA
-            out_ptr_B++;
-
-            for (int i = 0; i < 4; i++) {
-                in_ptrs[i]++;
-            }
-        }
-    }
-    cur->rearranged_weight_gemm = (uint8_t *) out_ptr_B_start;
-}
-
-void rearrange_q8_0_weights_blocked8_neon(struct ggml_tensor * cur) {
-    block_q8_0x8 * out_ptr_B = malloc(ggml_nbytes(cur));  // B_blocked->data;
-    block_q8_0x8 * out_ptr_B_start = out_ptr_B;
-    int64_t nb = cur->ne[0] / QK8_0;
-
-    for (int y_out = 0; y_out < cur->ne[1] / 8; y_out++) {
-        const block_q8_0 * in_ptrs[8];
-
-        in_ptrs[0] = (block_q8_0 *) cur->data + (y_out * 8 * nb);
-        for (int i = 0; i < 7; i++) {
-            in_ptrs[i + 1] = in_ptrs[i] + nb;
-        }
-
-        for (int64_t x = 0; x < nb; x++) {
-            *out_ptr_B = make_block_q8_0x8(in_ptrs, 4);  // block_len=4 for SDOT
-            out_ptr_B++;
-
-            for (int i = 0; i < 8; i++) {
-                in_ptrs[i]++;
-            }
-        }
-    }
-    cur->rearranged_weight_gemv = (uint8_t *) out_ptr_B_start;
-}
-
-void rearrange_q8_0_weights_blocked8_sve(struct ggml_tensor * cur) {
-#if defined(__ARM_FEATURE_SVE)
-    if (svcntw() != 8) {
-        printf("ggml_gemv_q8_0_q8_0_blocked8_sve: SVE VL != 256 - aborting. Use Arm Neon GEMV kernels\n");
-        exit(1);
-    }
-
-    block_q8_0x8 * out_ptr_B = malloc(ggml_nbytes(cur));  // B_blocked->data;
-    block_q8_0x8 * out_ptr_B_start = out_ptr_B;
-    int64_t nb = cur->ne[0] / QK8_0;
-
-    for (int y_out = 0; y_out < cur->ne[1] / 8; y_out++) {
-        const block_q8_0 * in_ptrs[8];
-
-        in_ptrs[0] = (block_q8_0 *) cur->data + (y_out * 8 * nb);
-        for (int i = 0; i < 7; i++) {
-            in_ptrs[i + 1] = in_ptrs[i] + nb;
-        }
-
-        for (int64_t x = 0; x < nb; x++) {
-            *out_ptr_B = make_block_q8_0x8(in_ptrs, 4);  // block_len=4 for SDOT
-            out_ptr_B++;
-
-            for (int i = 0; i < 8; i++) {
-                in_ptrs[i]++;
-            }
-        }
-    }
-    cur->rearranged_weight_gemv = (uint8_t *) out_ptr_B_start;
-#endif
-}
-
-#if defined(__ARM_FEATURE_SVE)
-static void (*_rearrange_q8_0_weights_for_gemv)(struct ggml_tensor *) = &rearrange_q8_0_weights_blocked8_sve;
-#elif defined(__ARM_NEON)
-static void (*_rearrange_q8_0_weights_for_gemv)(struct ggml_tensor *) = &rearrange_q8_0_weights_blocked8_neon;
-#endif
-
-#if defined(__ARM_NEON) || defined(__ARM_FEATURE_SVE)
-void rearrange_q8_0_weights_for_gemv(struct ggml_tensor * cur) { _rearrange_q8_0_weights_for_gemv(cur); }
-#endif
-
-void rearrange_q8_0_weights_for_gemm(struct ggml_tensor * cur) {
-    block_q8_0x4 * out_ptr_B = malloc(ggml_nbytes(cur));  // B_blocked->data;
-    block_q8_0x4 * out_ptr_B_start = out_ptr_B;
-    int64_t nb = cur->ne[0] / QK8_0;
-
-    for (int y_out = 0; y_out < cur->ne[1] / 4; y_out++) {
-        const block_q8_0 * in_ptrs[4];
-
-        in_ptrs[0] = (block_q8_0 *) cur->data + (y_out * 4 * nb);
-        for (int i = 0; i < 3; i++) {
-            in_ptrs[i + 1] = in_ptrs[i] + nb;
-        }
-
-        for (int64_t x = 0; x < nb; x++) {
-            *out_ptr_B =
-                make_block_q8_0x4(in_ptrs, 8);  // block_len=8 for SMMLA
-            out_ptr_B++;
-
-            for (int i = 0; i < 4; i++) {
-                in_ptrs[i]++;
-            }
-        }
-    }
-    cur->rearranged_weight_gemm = (uint8_t *) out_ptr_B_start;
-}
-
 //
 // cross-platform UTF-8 file paths
 //
@@ -839,6 +653,7 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
 #else
         .nrows                    = 1,
 #endif
+        .from_float_to_mat        = quantize_row_q8_0_aarch64,
     },
     [GGML_TYPE_Q8_1] = {
         .type_name                = "q8_1",
@@ -1032,6 +847,32 @@ static const ggml_type_traits_t type_traits[GGML_TYPE_COUNT] = {
         .type_size                = sizeof(block_q8_K),
         .is_quantized             = true,
         .from_float               = quantize_row_q8_K,
+    },
+    [GGML_TYPE_Q4_0_AARCH64] = {
+        .type_name                = "q4_0_aarch64",
+        .blck_size                = QK4_0,
+        .type_size                = sizeof(block_q4_0),
+        .is_quantized             = true,
+        .to_float                 = (ggml_to_float_t) dequantize_row_q4_0,
+        .from_float               = quantize_row_q4_0,
+        .from_float_reference     = (ggml_from_float_t) quantize_row_q4_0_reference,
+        .vec_dot                  = ggml_vec_dot_q4_0_q8_0,
+        .vec_dot_type             = GGML_TYPE_Q8_0,
+#if defined (__ARM_FEATURE_MATMUL_INT8)
+        .nrows                    = 2,
+#else
+        .nrows                    = 1,
+#endif
+#if defined(__ARM_FEATURE_SVE)
+        .gemv                     = ggml_gemv_q4_0_q8_0_aarch64_sve256,
+        .gemm                     = ggml_gemm_q4_0_q8_0_aarch64_sve256,
+#elif defined(__ARM_NEON) && defined(__ARM_FEATURE_MATMUL_INT8)
+        .gemv                     = ggml_gemv_q4_0_q8_0_aarch64_neon,
+        .gemm                     = ggml_gemm_q4_0_q8_0_aarch64_neon,
+#elif defined(__ARM_NEON)
+        .gemv                     = ggml_gemv_q4_0_q8_0_aarch64_neon_noi8mm,
+        .gemm                     = ggml_gemm_q4_0_q8_0_aarch64_neon_noi8mm,
+#endif
     }
 };
 
@@ -2181,10 +2022,6 @@ inline static void ggml_vec_argmax_f32(const int n, int * s, const float * x) {
     *s = idx;
 }
 
-static void ggml_gemv_q4_0_q8_0(const int n, int output_channels, int input_width, float * restrict s, const void * restrict vx, const void * restrict vy, int ith, int nth);
-
-static void ggml_gemv_q8_0_q8_0(const int n, int output_channels, int input_width, float * restrict s, const void * restrict vx, const void * restrict vy, int ith, int nth);
-
 //
 // data types
 //
@@ -2798,6 +2635,7 @@ enum ggml_type ggml_ftype_to_ggml_type(enum ggml_ftype ftype) {
         case GGML_FTYPE_MOSTLY_IQ4_XS:        wtype = GGML_TYPE_IQ4_XS;   break;
         case GGML_FTYPE_MOSTLY_IQ3_S:         wtype = GGML_TYPE_IQ3_S;    break;
         case GGML_FTYPE_MOSTLY_IQ2_S:         wtype = GGML_TYPE_IQ2_S;    break;
+        case GGML_FTYPE_MOSTLY_Q4_0_AARCH64:  wtype = GGML_TYPE_Q4_0_AARCH64;  break;
         case GGML_FTYPE_UNKNOWN:              wtype = GGML_TYPE_COUNT; break;
         case GGML_FTYPE_MOSTLY_Q4_1_SOME_F16: wtype = GGML_TYPE_COUNT; break;
     }
@@ -3232,9 +3070,6 @@ static struct ggml_tensor * ggml_new_tensor_impl(
         /*.name         =*/ { 0 },
         /*.extra        =*/ NULL,
         /*.padding      =*/ { 0 },
-        /*.rearranged_weight_gemv =*/ NULL,
-        /*.rearranged_weight_gemm =*/ NULL,
-        /*.weight_rearranged      =*/ false,
     };
 
     // TODO: this should not be needed as long as we don't rely on aligned SIMD loads
@@ -8469,6 +8304,7 @@ static void ggml_compute_forward_add(
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
+        case GGML_TYPE_Q4_0_AARCH64:
             {
                 ggml_compute_forward_add_q_f32(params, dst);
             } break;
@@ -8752,6 +8588,7 @@ static void ggml_compute_forward_add1(
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
+        case GGML_TYPE_Q4_0_AARCH64:
             {
                 ggml_compute_forward_add1_q_f32(params, dst);
             } break;
@@ -8880,6 +8717,7 @@ static void ggml_compute_forward_acc(
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
+        case GGML_TYPE_Q4_0_AARCH64:
         default:
             {
                 GGML_ASSERT(false);
@@ -11030,6 +10868,9 @@ static void ggml_compute_forward_mul_mat(
     enum ggml_type    const vec_dot_type          = type_traits[type].vec_dot_type;
     ggml_from_float_t const from_float_to_vec_dot = type_traits[vec_dot_type].from_float;
     int64_t           const vec_dot_num_rows      = type_traits[type].nrows;
+    ggml_from_float_to_mat_t const from_float_to_mat = type_traits[vec_dot_type].from_float_to_mat;
+    ggml_gemv_t       const gemv                  = type_traits[type].gemv;
+    ggml_gemm_t       const gemm                  = type_traits[type].gemm;
 
     GGML_ASSERT(ne0 == ne01);
     GGML_ASSERT(ne1 == ne11);
@@ -11162,10 +11003,9 @@ UseGgmlGemm1:;
             assert(params->wsize >= ne11*ne12*ne13*row_size);
             GGML_ASSERT(src1->type == GGML_TYPE_F32);
 
-#if defined(__ARM_FEATURE_MATMUL_INT8)
-            if ((src0->weight_rearranged == true) && (ne11 >= 4) && (ne12 == 1) && (ne13 == 1)) {
+            if ((type == GGML_TYPE_Q4_0_AARCH64) && (ne11 >= 4) && (ne12 == 1) && (ne13 == 1)) {
                     for (int64_t i11 = 0; i11 < ne11 / 4; ++i11) {
-                        quantize_row_q8_0_and_make_block_q8_0x4((float *)((char *) src1->data + i11 * 4 * nb11), (void *) wdata, ne10, 4);
+                        from_float_to_mat((float *)((char *) src1->data + i11 * 4 * nb11), (void *) wdata, ne10, 4, ggml_cpu_has_matmul_int8() ? 8 : 4);
                         wdata += row_size * 4;
                     }
                     for (int64_t i11 = (ne11 / 4) * 4; i11 < ne11; ++i11) {
@@ -11173,10 +11013,7 @@ UseGgmlGemm1:;
                          wdata += row_size;
                      }
             }
-#endif
-#if defined(__ARM_FEATURE_MATMUL_INT8)
             else {
-#endif
                 for (int64_t i13 = 0; i13 < ne13; ++i13) {
                     for (int64_t i12 = 0; i12 < ne12; ++i12) {
                         for (int64_t i11 = 0; i11 < ne11; ++i11) {
@@ -11185,9 +11022,7 @@ UseGgmlGemm1:;
                         }
                     }
                 }
-#if defined(__ARM_FEATURE_MATMUL_INT8)
             }
-#endif
         }
 
         return;
@@ -11273,114 +11108,50 @@ UseGgmlGemm2:;
     // 16 * 2, accounting for mmla kernels
     float tmp[32];
 
-#if defined(__ARM_FEATURE_MATMUL_INT8) && (defined(__ARM_NEON) || defined(__ARM_FEATURE_SVE))
-    if ((ggml_n_dims(src0) == 2) && (ne11 == 1) && (src0->weight_rearranged == true)) {
-        if (src0->type == GGML_TYPE_Q4_0) {
-            ggml_gemv_q4_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data), (const char *) src0->rearranged_weight_gemv, (const char *) wdata, ith, nth); // use Arm Neon/SVE GEMV kernels
-        } else if (src0->type == GGML_TYPE_Q8_0) {
-            ggml_gemv_q8_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data), (const char *) src0->rearranged_weight_gemv, (const char *) wdata, ith, nth); // use Arm Neon/SVE GEMV kernels
-        }
+    if ((ggml_n_dims(src0) == 2) && (ne11 == 1) && (type == GGML_TYPE_Q4_0_AARCH64)) {
+        gemv(ne00, ne01, 1, (float *)((char *) dst->data), (const char *) src0->data, (const char *) wdata, ith, nth); // use Arm Neon/SVE GEMV kernels
     }
-    else if ((ggml_n_dims(src0) == 2) && (ne11 >= 16) && (src0->weight_rearranged == true)) {
+    else if ((ggml_n_dims(src0) == 2) && (ne11 >= 16) && (type == GGML_TYPE_Q4_0_AARCH64)) {
         // use batch-sized 16, 8, and 4 GEMM kernels
-        if (src0->type == GGML_TYPE_Q4_0) {
-            for (int row_iter = 0; row_iter < ne11 / 16; row_iter++) {
-                ggml_gemm_q4_0_q8_0(ne00, 16, ne01, 16, (float *)((char *) dst->data + (row_iter * 16 * nb1)), (const char *) src0->rearranged_weight_gemm, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 16) * row_size : (row_iter * 16 * nb11)), ith, nth);
-            }
-            int rows_processed = (ne11 / 16) * 16;
-            for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 8; row_iter++) {
-                ggml_gemm_q4_0_q8_0(ne00, 8, ne01, 8, (float *)((char *) dst->data + ((rows_processed + row_iter * 8) * nb1)), (const char *) src0->rearranged_weight_gemm,
-                                            (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 8) * row_size : ((rows_processed + row_iter * 8) * nb11)), ith, nth);
-            }
-            rows_processed = rows_processed + ((ne11 - rows_processed) / 8) * 8;
-            for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 4; row_iter++) {
-                ggml_gemm_q4_0_q8_0(ne00, 4, ne01, 4, (float *)((char *) dst->data + ((rows_processed + row_iter * 4) * nb1)), (const char *) src0->rearranged_weight_gemm,
-                                            (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 4) * row_size : ((rows_processed + row_iter * 4) * nb11)), ith, nth);
-            }
-            rows_processed = rows_processed + ((ne11 - rows_processed) / 4) * 4;
-            for (int row_iter = rows_processed; row_iter < ne11; row_iter++) {
-                ggml_gemv_q4_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->rearranged_weight_gemv, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
-            }
-        } else if (src0->type == GGML_TYPE_Q8_0) {
-            for (int row_iter = 0; row_iter < ne11 / 16; row_iter++) {
-                ggml_gemm_q8_0_q8_0(ne00, 16, ne01, 16, (float *)((char *) dst->data + (row_iter * 16 * nb1)), (const char *) src0->rearranged_weight_gemm, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 16) * row_size : (row_iter * 16 * nb11)), ith, nth);
-            }
-            int rows_processed = (ne11 / 16) * 16;
-            for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 8; row_iter++) {
-                ggml_gemm_q8_0_q8_0(ne00, 8, ne01, 8, (float *)((char *) dst->data + ((rows_processed + row_iter * 8) * nb1)), (const char *) src0->rearranged_weight_gemm,
-                                            (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 8) * row_size : ((rows_processed + row_iter * 8) * nb11)), ith, nth);
-            }
-            rows_processed = rows_processed + ((ne11 - rows_processed) / 8) * 8;
-            for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 4; row_iter++) {
-                ggml_gemm_q8_0_q8_0(ne00, 4, ne01, 4, (float *)((char *) dst->data + ((rows_processed + row_iter * 4) * nb1)), (const char *) src0->rearranged_weight_gemm,
-                                            (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 4) * row_size : ((rows_processed + row_iter * 4) * nb11)), ith, nth);
-            }
-            rows_processed = rows_processed + ((ne11 - rows_processed) / 4) * 4;
-            for (int row_iter = rows_processed; row_iter < ne11; row_iter++) {
-                ggml_gemv_q8_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->rearranged_weight_gemv, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
-            }
+        for (int row_iter = 0; row_iter < ne11 / 16; row_iter++) {
+            gemm(ne00, ne01, 16, (float *)((char *) dst->data + (row_iter * 16 * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 16) * row_size : (row_iter * 16 * nb11)), ith, nth);
         }
-    } else if ((ggml_n_dims(src0) == 2) && (ne11 >= 8) && (src0->weight_rearranged == true)) {
+        int rows_processed = (ne11 / 16) * 16;
+        for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 8; row_iter++) {
+            gemm(ne00, ne01, 8, (float *)((char *) dst->data + ((rows_processed + row_iter * 8) * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 8) * row_size : ((rows_processed + row_iter * 8) * nb11)), ith, nth);
+        }
+        rows_processed = rows_processed + ((ne11 - rows_processed) / 8) * 8;
+        for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 4; row_iter++) {
+            gemm(ne00, ne01, 4, (float *)((char *) dst->data + ((rows_processed + row_iter * 4) * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 4) * row_size : ((rows_processed + row_iter * 4) * nb11)), ith, nth);
+        }
+        rows_processed = rows_processed + ((ne11 - rows_processed) / 4) * 4;
+        for (int row_iter = rows_processed; row_iter < ne11; row_iter++) {
+            gemv(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
+        }
+    }
+    else if ((ggml_n_dims(src0) == 2) && (ne11 >= 8) && (type == GGML_TYPE_Q4_0_AARCH64)) {
         // use batch-sized 8, and 4 GEMM kernels
-        if (src0->type == GGML_TYPE_Q4_0) {
-            for (int row_iter = 0; row_iter < ne11 / 8; row_iter++) {
-                ggml_gemm_q4_0_q8_0(ne00, 8, ne01, 8, (float *)((char *) dst->data + (row_iter * 8 * nb1)), (const char *) src0->rearranged_weight_gemm, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 8) * row_size : (row_iter * 8 * nb11)), ith, nth);
-            }
-            int rows_processed = (ne11 / 8) * 8;
-            for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 4; row_iter++) {
-                ggml_gemm_q4_0_q8_0(ne00, 4, ne01, 4, (float *)((char *) dst->data + ((rows_processed + row_iter * 4) * nb1)), (const char *) src0->rearranged_weight_gemm,
-                                            (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 4) * row_size : ((rows_processed + row_iter * 4) * nb11)), ith, nth);
-            }
-            for (int row_iter = ((ne11 / 8) * 8) + ((ne11 - rows_processed) / 4 * 4); row_iter < ne11; row_iter++) {
-                ggml_gemv_q4_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->rearranged_weight_gemv, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
-            }
-        } else if (src0->type == GGML_TYPE_Q8_0) {
-            for (int row_iter = 0; row_iter < ne11 / 8; row_iter++) {
-                ggml_gemm_q8_0_q8_0(ne00, 8, ne01, 8, (float *)((char *) dst->data + (row_iter * 8 * nb1)), (const char *) src0->rearranged_weight_gemm, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 8) * row_size : (row_iter * 8 * nb11)), ith, nth);
-            }
-            int rows_processed = (ne11 / 8) * 8;
-            for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 4; row_iter++) {
-                ggml_gemm_q8_0_q8_0(ne00, 4, ne01, 4, (float *)((char *) dst->data + ((rows_processed + row_iter * 4) * nb1)), (const char *) src0->rearranged_weight_gemm,
-                                            (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 4) * row_size : ((rows_processed + row_iter * 4) * nb11)), ith, nth);
-            }
-            for (int row_iter = ((ne11 / 8) * 8) + ((ne11 - rows_processed) / 4 * 4); row_iter < ne11; row_iter++) {
-                ggml_gemv_q8_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->rearranged_weight_gemv, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
-            }
+        for (int row_iter = 0; row_iter < ne11 / 8; row_iter++) {
+            gemm(ne00, ne01, 8, (float *)((char *) dst->data + (row_iter * 8 * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 8) * row_size : (row_iter * 8 * nb11)), ith, nth);
         }
-    } else if ((ggml_n_dims(src0) == 2) && (ne11 >= 4) && (src0->weight_rearranged == true)) {
+        int rows_processed = (ne11 / 8) * 8;
+        for (int row_iter = 0; row_iter < (ne11 - rows_processed) / 4; row_iter++) {
+            gemm(ne00, ne01, 4, (float *)((char *) dst->data + ((rows_processed + row_iter * 4) * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (rows_processed + row_iter * 4) * row_size : ((rows_processed + row_iter * 4) * nb11)), ith, nth);
+        }
+        for (int row_iter = ((ne11 / 8) * 8) + ((ne11 - rows_processed) / 4 * 4); row_iter < ne11; row_iter++) {
+            gemv(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
+        }
+    } 
+    else if ((ggml_n_dims(src0) == 2) && (ne11 >= 4) && (type == GGML_TYPE_Q4_0_AARCH64)) {
         // use batch-sized 4 GEMM kernel
-        if (src0->type == GGML_TYPE_Q4_0) {
-            for (int row_iter = 0; row_iter < ne11 / 4; row_iter++) {
-                ggml_gemm_q4_0_q8_0(ne00, 4, ne01, 4, (float *)((char *) dst->data + (row_iter * 4 * nb1)), (const char *) src0->rearranged_weight_gemm, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 4) * row_size : (row_iter * 4 * nb11)), ith, nth);
-            }
-            for (int row_iter = (ne11 / 4) * 4; row_iter < ne11; row_iter++) {
-                ggml_gemv_q4_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->rearranged_weight_gemv, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
-            }
-        } else if (src0->type == GGML_TYPE_Q8_0) {
-            for (int row_iter = 0; row_iter < ne11 / 4; row_iter++) {
-                ggml_gemm_q8_0_q8_0(ne00, 4, ne01, 4, (float *)((char *) dst->data + (row_iter * 4 * nb1)), (const char *) src0->rearranged_weight_gemm, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 4) * row_size : (row_iter * 4 * nb11)), ith, nth);
-            }
-            for (int row_iter = (ne11 / 4) * 4; row_iter < ne11; row_iter++) {
-                ggml_gemv_q8_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->rearranged_weight_gemv, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
-            }
+        for (int row_iter = 0; row_iter < ne11 / 4; row_iter++) {
+            gemm(ne00, ne01, 4, (float *)((char *) dst->data + (row_iter * 4 * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter * 4) * row_size : (row_iter * 4 * nb11)), ith, nth);
+        }
+        for (int row_iter = (ne11 / 4) * 4; row_iter < ne11; row_iter++) {
+            gemv(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->data, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
         }
     }
-#elif defined(__ARM_NEON) || defined(__ARM_FEATURE_SVE)
-    if ((ggml_n_dims(src0) == 2) && (src0->weight_rearranged == true)) {
-        if (src0->type == GGML_TYPE_Q4_0) {
-            for (int row_iter = 0; row_iter < ne11; row_iter++) {
-                ggml_gemv_q4_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->rearranged_weight_gemv, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
-            }
-        } else if (src0->type == GGML_TYPE_Q8_0) {
-            for (int row_iter = 0; row_iter < ne11; row_iter++) {
-                ggml_gemv_q8_0_q8_0(ne00, ne01, 1, (float *)((char *) dst->data + (row_iter * nb1)), (const char *) src0->rearranged_weight_gemv, (const char *) wdata + (src1_cont || src1->type != vec_dot_type ? (row_iter)*row_size : (row_iter * nb11)), ith, nth);
-            }
-        }
-    }
-#endif
-#if defined(__ARM_FEATURE_MATMUL_INT8) || defined(__ARM_NEON) || defined(__ARM_FEATURE_SVE)
     else {
-#endif
         for (int64_t iir1 = ir110; iir1 < ir111; iir1 += blck_1) {
             for (int64_t iir0 = ir010; iir0 < ir011; iir0 += blck_0) {
                 for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir111; ir1 += nrc) {
@@ -11422,9 +11193,7 @@ UseGgmlGemm2:;
                 }
             }
         }
-#if defined(__ARM_FEATURE_MATMUL_INT8) || defined(__ARM_NEON) || defined(__ARM_FEATURE_SVE)
     }
-#endif
 }
 
 // ggml_compute_forward_mul_mat_id
@@ -11944,6 +11713,7 @@ static void ggml_compute_forward_out_prod(
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
+        case GGML_TYPE_Q4_0_AARCH64:
             {
                 ggml_compute_forward_out_prod_q_f32(params, dst);
             } break;
@@ -12136,6 +11906,7 @@ static void ggml_compute_forward_set(
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
+        case GGML_TYPE_Q4_0_AARCH64:
         default:
             {
                 GGML_ASSERT(false);
@@ -12360,6 +12131,7 @@ static void ggml_compute_forward_get_rows(
         case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
+        case GGML_TYPE_Q4_0_AARCH64:
             {
                 ggml_compute_forward_get_rows_q(params, dst);
             } break;
@@ -13083,6 +12855,7 @@ static void ggml_compute_forward_alibi(
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
         case GGML_TYPE_Q8_K:
+        case GGML_TYPE_Q4_0_AARCH64:
         case GGML_TYPE_I8:
         case GGML_TYPE_I16:
         case GGML_TYPE_I32:
@@ -13172,6 +12945,7 @@ static void ggml_compute_forward_clamp(
         case GGML_TYPE_IQ3_S:
         case GGML_TYPE_IQ2_S:
         case GGML_TYPE_Q8_K:
+        case GGML_TYPE_Q4_0_AARCH64:
         case GGML_TYPE_I8:
         case GGML_TYPE_I16:
         case GGML_TYPE_I32:
@@ -21080,6 +20854,7 @@ size_t ggml_quantize_chunk(
 #else
         case GGML_TYPE_IQ4_XS:  result = quantize_iq4_xs (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
 #endif
+        case GGML_TYPE_Q4_0_AARCH64: result = quantize_q4_0_aarch64(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_F16:
             {
                 size_t elemsize = sizeof(ggml_fp16_t);
@@ -22491,26 +22266,12 @@ int ggml_cpu_has_matmul_int8(void) {
 #endif
 }
 
+int ggml_cpu_has_sve(void) {
 #if defined(__ARM_FEATURE_SVE)
-static void (*_ggml_gemv_q4_0_q8_0)(const int, int, int, float * restrict, const void * restrict, const void * restrict, int, int) = &ggml_gemv_q4_0_q8_0_blocked8_sve;
-#elif defined(__ARM_NEON)
-static void (*_ggml_gemv_q4_0_q8_0)(const int, int, int, float * restrict, const void * restrict, const void * restrict, int, int) = &ggml_gemv_q4_0_q8_0_blocked8_neon;
+    return 1;
+#else
+    return 0;
 #endif
-
-#if defined(__ARM_FEATURE_SVE)
-static void (*_ggml_gemv_q8_0_q8_0)(const int, int, int, float * restrict, const void * restrict, const void * restrict, int, int) = &ggml_gemv_q8_0_q8_0_blocked8_sve;
-#elif defined(__ARM_NEON)
-static void (*_ggml_gemv_q8_0_q8_0)(const int, int, int, float * restrict, const void * restrict, const void * restrict, int, int) = &ggml_gemv_q8_0_q8_0_blocked8_neon;
-#endif
-
-#if defined(__ARM_NEON) || defined(__ARM_FEATURE_SVE)
-static void ggml_gemv_q4_0_q8_0(const int n, int output_channels, int input_width, float * restrict s, const void * restrict vx, const void * restrict vy, int ith, int nth) {
-    _ggml_gemv_q4_0_q8_0(n, output_channels, input_width, s, vx, vy, ith, nth);
 }
-
-static void ggml_gemv_q8_0_q8_0(const int n, int output_channels, int input_width, float * restrict s, const void * restrict vx, const void * restrict vy, int ith, int nth) {
-    _ggml_gemv_q8_0_q8_0(n, output_channels, input_width, s, vx, vy, ith, nth);
-}
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////
