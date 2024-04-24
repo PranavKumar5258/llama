@@ -21,6 +21,8 @@
 #  include "ggml-sycl.h"
 #elif defined(GGML_USE_KOMPUTE)
 #   include "ggml-kompute.h"
+#elif defined(GGML_USE_QNN)
+#   include "ggml-qnn.h"
 #endif
 
 #ifdef GGML_USE_METAL
@@ -1667,6 +1669,95 @@ static ggml_backend_buffer_type_t llama_default_buffer_type_cpu(bool host_buffer
     return buft;
 
     GGML_UNUSED(host_buffer);
+}
+
+static ggml_backend_buffer_type_t llama_default_buffer_type_offload(int gpu) {
+    ggml_backend_buffer_type_t buft = nullptr;
+
+#ifdef GGML_USE_METAL
+    buft = ggml_backend_metal_buffer_type();
+#elif defined(GGML_USE_CUDA)
+    buft = ggml_backend_cuda_buffer_type(gpu);
+#elif defined(GGML_USE_VULKAN)
+    buft = ggml_backend_vk_buffer_type(gpu);
+#elif defined(GGML_USE_SYCL)
+    buft = ggml_backend_sycl_buffer_type(gpu);
+#elif defined(GGML_USE_CLBLAST)
+    buft = ggml_backend_opencl_buffer_type();
+#elif defined(GGML_USE_KOMPUTE)
+    buft = ggml_backend_kompute_buffer_type(gpu);
+    if (buft == nullptr) {
+        LLAMA_LOG_WARN("%s: cannot use GPU %d, check `vulkaninfo --summary`\n", __func__, gpu);
+    }
+#elif defined(GGML_USE_QNN)
+    buft = ggml_backend_qnn_buffer_type(gpu);
+#endif
+
+    if (buft == nullptr) {
+        buft = llama_default_buffer_type_cpu(true);
+    }
+    return buft;
+
+    GGML_UNUSED(gpu);
+}
+
+static ggml_backend_buffer_type_t llama_default_buffer_type_split(int fallback_gpu, const float * tensor_split) {
+    ggml_backend_buffer_type_t buft = nullptr;
+
+#ifdef GGML_USE_CUDA
+    if (ggml_backend_cuda_get_device_count() > 1) {
+        buft = ggml_backend_cuda_split_buffer_type(tensor_split);
+    }
+#endif
+
+#ifdef GGML_USE_SYCL
+    if (ggml_backend_sycl_get_device_count() > 1) {
+        buft = ggml_backend_sycl_split_buffer_type(tensor_split);
+    }
+#endif
+
+    if (buft == nullptr) {
+        buft = llama_default_buffer_type_offload(fallback_gpu);
+    }
+    return buft;
+
+    GGML_UNUSED(tensor_split);
+}
+
+static size_t llama_get_device_count() {
+#if defined(GGML_USE_CUDA)
+    return ggml_backend_cuda_get_device_count();
+#elif defined(GGML_USE_SYCL)
+    return ggml_backend_sycl_get_device_count();
+#elif defined(GGML_USE_VULKAN)
+    return ggml_backend_vk_get_device_count();
+#elif defined(GGML_USE_QNN)
+    return ggml_backend_qnn_get_device_count();
+#else
+    return 1;
+#endif
+}
+
+static size_t llama_get_device_memory(int device) {
+#if defined(GGML_USE_CUDA)
+    size_t total;
+    size_t free;
+    ggml_backend_cuda_get_device_memory(device, &free, &total);
+    return free;
+#elif defined(GGML_USE_SYCL)
+    size_t total;
+    size_t free;
+    ggml_backend_sycl_get_device_memory(device, &free, &total);
+    return free;
+#elif defined(GGML_USE_VULKAN)
+    size_t total;
+    size_t free;
+    ggml_backend_vk_get_device_memory(device, &free, &total);
+    return free;
+#else
+    return 1;
+    GGML_UNUSED(device);
+#endif
 }
 
 //
@@ -15518,6 +15609,8 @@ size_t llama_max_devices(void) {
     return GGML_SYCL_MAX_DEVICES;
 #elif defined(GGML_USE_VULKAN)
     return GGML_VK_MAX_DEVICES;
+#elif defined(GGML_USE_QNN)
+    return GGML_QNN_MAX_DEVICES;
 #else
     return 1;
 #endif
@@ -15533,7 +15626,8 @@ bool llama_supports_mlock(void) {
 
 bool llama_supports_gpu_offload(void) {
 #if defined(GGML_USE_CUDA) || defined(GGML_USE_CLBLAST) || defined(GGML_USE_METAL) || defined(GGML_USE_VULKAN) || \
-    defined(GGML_USE_SYCL) || defined(GGML_USE_KOMPUTE) || defined(GGML_USE_RPC)
+    defined(GGML_USE_SYCL) || defined(GGML_USE_KOMPUTE) || defined(GGML_USE_RPC) || defined(GGML_USE_QNN)
+=======
     // Defined when llama.cpp is compiled with support for offloading model layers to GPU.
     return true;
 #else
@@ -15844,6 +15938,17 @@ struct llama_context * llama_new_context_with_model(
             auto * backend = ggml_backend_kompute_init(model->main_gpu);
             if (backend == nullptr) {
                 LLAMA_LOG_ERROR("%s: failed to initialize Kompute backend\n", __func__);
+                llama_free(ctx);
+                return nullptr;
+            }
+            ctx->backends.push_back(backend);
+        }
+#elif defined(GGML_USE_QNN)
+        if (model->n_gpu_layers > 0) {
+            //the second param is package name of Andorid app, can be got by JNI from Java layer
+            ggml_backend_t backend = ggml_backend_qnn_init(QNN_CPU, "/data/data/com.ggml.llamacpp/");
+            if (nullptr == backend) {
+                LLAMA_LOG_ERROR("%s: failed to initialize QNN backend\n", __func__);
                 llama_free(ctx);
                 return nullptr;
             }
@@ -18102,6 +18207,14 @@ void llama_reset_timings(struct llama_context * ctx) {
     ctx->t_sample_us = ctx->n_sample = 0;
     ctx->t_eval_us   = ctx->n_eval   = 0;
     ctx->t_p_eval_us = ctx->n_p_eval = 0;
+}
+
+static int llama_has_qnn(void) {
+#ifdef GGML_USE_QNN
+    return 1;
+#else
+    return 0;
+#endif
 }
 
 const char * llama_print_system_info(void) {
