@@ -1176,7 +1176,6 @@ static void qnn_buf_buffer_put(qnn_buf_t * fifo, buf_element_t * element) {
     fifo->qnn_buf_size++;
     fifo->qnn_buf_data_size += element->size;
 
-    LOGJ("put:index %d, fifo->size is %d, self->buffer_pool_num_free %d\n", element->id, fifo->qnn_buf_size, fifo->buffer_pool_num_free);
     pthread_cond_signal (&fifo->not_empty);
 
     pthread_mutex_unlock (&fifo->mutex);
@@ -1426,9 +1425,12 @@ static void ggml_qnn_log_internal(ggml_log_level level, const char * file, const
         int len = vsnprintf(s_ggml_qnn_log_internal_buf + len_prefix, GGML_QNN_LOGBUF_LEN - len_prefix, format, args);
         if (len < (GGML_QNN_LOGBUF_LEN - len_prefix)) {
 #if (defined __ANDROID__) || (defined ANDROID)
-            __android_log_print(level, "ggml-qnn", "%s", s_ggml_qnn_log_internal_buf);
+            //for Android APP
+            __android_log_print(level, "ggml-qnn", "%s\n", s_ggml_qnn_log_internal_buf);
+            //for Android terminal
+            printf("%s\n", s_ggml_qnn_log_internal_buf);
 #else
-            printf("%s", buffer); //Qualcomm's QNN could running on Windows over ARM(aka WoA)
+            printf("%s\n", s_ggml_qnn_log_internal_buf);
 #endif
         }
         va_end(args);
@@ -2125,9 +2127,9 @@ int qnn_instance::load_system() {
 
     _qnn_interface.qnn_system_context_create(&_qnn_system_handle);
     if (nullptr == _qnn_system_handle) {
-        LOGW("can not create QNN system contenxt\n");
+        QNN_LOG_WARN("can not create QNN system contenxt\n");
     } else {
-        QNN_LOG_DEBUG("initialize qnn system successfully\n");
+        QNN_LOG_INFO("initialize qnn system successfully\n");
     }
 
     return 0;
@@ -2494,24 +2496,23 @@ static bool ggml_qnn_can_handle_op(const struct ggml_tensor * src0, const struct
     if (dst->op == GGML_OP_ADD) {
         return (src0->type == GGML_TYPE_F32 || src0->type == GGML_TYPE_F16) &&
                (src1->type == GGML_TYPE_F32 || src1->type == GGML_TYPE_F16) &&
-               (dst->type == GGML_TYPE_F32 || dst->type == GGML_TYPE_F16) && ((ne00 > 1 && ne01 > 1 && ne10 > 1 && ne11 > 1)) &&
-               (src0->rank == src1->rank);
+               (dst->type == GGML_TYPE_F32 || dst->type == GGML_TYPE_F16) && ((ne00 > 1 && ne01 > 1 && ne10 > 1 && ne11 > 1));
 
     }
 
     if (dst->op == GGML_OP_MUL_MAT) {
 #if 1 // log output have significant effect to performance but useful during development stage
         QNN_LOG_DEBUG("GGML_OP_MUL_MAT");
-        QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s)  ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-              src0->name, src0->rank,
+        QNN_LOG_INFO("%15s: type = %i (%5s)  ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+              src0->name,
               src0->type, ggml_type_name(src0->type), src0->ne[0], src0->ne[1], src0->ne[2],
               src0->nb[0], src0->nb[1], src0->nb[2]);
-        QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-              src1->name, src1->rank,
+        QNN_LOG_INFO("%15s: type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+              src1->name,
               src1->type, ggml_type_name(src1->type), src1->ne[0], src1->ne[1], src1->ne[2],
               src1->nb[0], src1->nb[1], src1->nb[2]);
-        QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-              dst->name, dst->rank,
+        QNN_LOG_INFO("%15s: type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+              dst->name,
               dst->type, ggml_type_name(dst->type), dst->ne[0], dst->ne[1], dst->ne[2], dst->nb[0],
               dst->nb[1], dst->nb[2]);
 #endif
@@ -2576,18 +2577,18 @@ static void ggml_qnn_add(const ggml_tensor * src0, const ggml_tensor * src1, ggm
     QNN_INTERFACE_VER_TYPE qnn_raw_interface    = ctx->raw_interface;
 
     n_begin_time                                = ggml_time_us();
-#if 0  //it works fine with whisper.cpp and llama.cpp. comment them because focus on mulmat in llama.cpp inference since 04-23-2024
+#if 0
     QNN_LOG_DEBUG("call %s\n", __func__);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s)  ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          src0->name, src0->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s)  ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          src0->name,
           src0->type, ggml_type_name(src0->type), src0->ne[0], src0->ne[1], src0->ne[2],
           src0->nb[0], src0->nb[1], src0->nb[2]);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          src1->name, src1->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          src1->name,
           src1->type, ggml_type_name(src1->type), src1->ne[0], src1->ne[1], src1->ne[2],
           src1->nb[0], src1->nb[1], src1->nb[2]);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          dst->name, dst->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          dst->name,
           dst->type, ggml_type_name(dst->type), dst->ne[0], dst->ne[1], dst->ne[2], dst->nb[0],
           dst->nb[1], dst->nb[2]);
     QNN_LOG_DEBUG("%d, %d, %d, %d", src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3]);
@@ -2793,16 +2794,16 @@ static void ggml_qnn_mul_mat(const ggml_tensor * src0, const ggml_tensor * src1,
 
     n_begin_time                                = ggml_time_us();
     QNN_LOG_DEBUG("call %s\n", __func__);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s)  ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          src0->name, src0->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s)  ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          src0->name,
           src0->type, ggml_type_name(src0->type), src0->ne[0], src0->ne[1], src0->ne[2],
           src0->nb[0], src0->nb[1], src0->nb[2]);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          src1->name, src1->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          src1->name,
           src1->type, ggml_type_name(src1->type), src1->ne[0], src1->ne[1], src1->ne[2],
           src1->nb[0], src1->nb[1], src1->nb[2]);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          dst->name, dst->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          dst->name,
           dst->type, ggml_type_name(dst->type), dst->ne[0], dst->ne[1], dst->ne[2], dst->nb[0],
           dst->nb[1], dst->nb[2]);
     QNN_LOG_DEBUG("%d, %d, %d, %d", src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3]);
@@ -3000,16 +3001,16 @@ static void ggml_qnn_hanlde_op(const enum ggml_op ggmlop, const ggml_tensor * sr
 
     n_begin_time                                = ggml_time_us();
     QNN_LOG_DEBUG("call %s\n", __func__);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s)  ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          src0->name, src0->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s)  ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          src0->name,
           src0->type, ggml_type_name(src0->type), src0->ne[0], src0->ne[1], src0->ne[2],
           src0->nb[0], src0->nb[1], src0->nb[2]);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          src1->name, src1->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          src1->name,
           src1->type, ggml_type_name(src1->type), src1->ne[0], src1->ne[1], src1->ne[2],
           src1->nb[0], src1->nb[1], src1->nb[2]);
-    QNN_LOG_INFO("%15s: rank = %d, type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
-          dst->name, dst->rank,
+    QNN_LOG_INFO("%15s: type = %i (%5s) ne = %5" PRIi64 " x %5" PRIi64 " x %5" PRIi64 ", nb = (%5zi, %5zi, %5zi)\n",
+          dst->name,
           dst->type, ggml_type_name(dst->type), dst->ne[0], dst->ne[1], dst->ne[2], dst->nb[0],
           dst->nb[1], dst->nb[2]);
     QNN_LOG_DEBUG("%d, %d, %d, %d", src0->ne[0], src0->ne[1], src0->ne[2], src0->ne[3]);
@@ -3413,13 +3414,13 @@ bool ggml_qnn_compute_forward(struct ggml_compute_params * params, struct ggml_t
 
     if ((!use_hwaccel) && (!supported_op)) {
         //TODO: should be removed because this is a workaround method during development stage
-        ggml_compute_forward(params, tensor);
+        //ggml_compute_forward(params, tensor);
         return false;
     }
 
     if ((!use_hwaccel) && (!ggml_qnn_can_handle_op(tensor->src[0], tensor->src[1], tensor))) {
         //TODO: should be removed because this is a workaround method during development stage
-        ggml_compute_forward(params, tensor);
+        //ggml_compute_forward(params, tensor);
         return false;
     }
     //end sanity check
@@ -4396,7 +4397,6 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads, int n_cur_
 }
 
 
-#if 0 //replaced with ggml_status ggml_backend_qnn_graph_compute_multithread
 static void * ggml_graph_compute_thread(void * data) {
     struct ggml_compute_state * state = (struct ggml_compute_state *) data;
 
@@ -4531,7 +4531,6 @@ static void * ggml_graph_compute_thread(void * data) {
 
     return 0;
 }
-#endif
 
 
 static ggml_status ggml_backend_qnn_graph_compute_multithread(ggml_backend_t backend, ggml_cgraph * cgraph) {
@@ -4830,8 +4829,7 @@ ggml_backend_t ggml_backend_qnn_init(size_t device, const char * qnn_lib_path) {
 }
 
 
-extern "C" int ggml_backend_qnn_reg_devices();
-
+extern "C" int ggml_backend_qnn_reg_devices(void);
 
 int ggml_backend_qnn_reg_devices() {
     for (size_t idx = 0; idx < GGML_QNN_MAX_DEVICES; idx++) {

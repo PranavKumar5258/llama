@@ -93,11 +93,13 @@ Any **mainstream** Android phone based on Qualcomm's mobile SoC should be suppor
 ### II. Build llama.cpp + QNN backend
 
 
-Please refer to [project kantv](https://github.com/zhouwg/kantv) firstly.
+Please refer to [project kantv](https://github.com/zhouwg/kantv)
 
 
-A small and standalone Android example(or re-use [the existing Android example in llama.cpp](https://github.com/ggerganov/llama.cpp/tree/master/examples/llama.android)) for purpose of facilitate community developers to participate in develop/verify QNN backend.
+or
 
+
+using [test-backend-ops.cpp](tests/ggml-qnn) to verify it on Qualcomm mobile SoC based Android phone
 
 ### III. Run the inference on Qualcomm mobile SoC based Android phone
 

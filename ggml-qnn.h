@@ -18,7 +18,7 @@ enum QNNBackend {
     QNN_HTP,
 };
 
-GGML_API int            ggml_backend_qnn_reg_devices();
+GGML_API int            ggml_backend_qnn_reg_devices(void);
 
 /**
  *
@@ -38,10 +38,6 @@ GGML_API void           ggml_backend_qnn_get_device_description(int device, char
 
 
 GGML_API ggml_backend_buffer_type_t ggml_backend_qnn_buffer_type(size_t dev_num);
-
-// TODO: this is a temporary API, should be removed in the future
-GGML_API bool ggml_qnn_compute_forward(struct ggml_compute_params * params, struct ggml_tensor * tensor);
-
 
 #ifdef __cplusplus
 }
