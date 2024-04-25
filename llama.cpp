@@ -15946,7 +15946,7 @@ struct llama_context * llama_new_context_with_model(
 #elif defined(GGML_USE_QNN)
         if (model->n_gpu_layers > 0) {
             //the second param is package name of Andorid app, can be got by JNI from Java layer
-            ggml_backend_t backend = ggml_backend_qnn_init(QNN_CPU, "/data/data/com.ggml.llamacpp/");
+            ggml_backend_t backend = ggml_backend_qnn_init(model->main_gpu, "/data/data/com.ggml.llamacpp/");
             if (nullptr == backend) {
                 LLAMA_LOG_ERROR("%s: failed to initialize QNN backend\n", __func__);
                 llama_free(ctx);
@@ -18207,14 +18207,6 @@ void llama_reset_timings(struct llama_context * ctx) {
     ctx->t_sample_us = ctx->n_sample = 0;
     ctx->t_eval_us   = ctx->n_eval   = 0;
     ctx->t_p_eval_us = ctx->n_p_eval = 0;
-}
-
-static int llama_has_qnn(void) {
-#ifdef GGML_USE_QNN
-    return 1;
-#else
-    return 0;
-#endif
 }
 
 const char * llama_print_system_info(void) {

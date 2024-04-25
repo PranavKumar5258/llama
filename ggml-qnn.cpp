@@ -1,33 +1,3 @@
-/*
- * MIT license
- * Copyright (C) 2024 GGML Authors
- * SPDX-License-Identifier: MIT
- *
- * this is implementation of ggml QNN(Qualcomm Neural Network, aka AI Engine Direct) backend
- *
- * status:
- *
- * 1. core implementation(data path works fine as expected with whisper.cpp using QNN CPU/GPU backend on Qualcomm's SoC based low-end phone
- *
- * 2. core implementation(data path works fine as expected with whisper.cpp using QNN HTP(aka DSP) backend on Qualcomm's soC based high-end phone
- *
- * 3. core implementation(data path works fine as expected with llama.cpp using QNN CPU/GPU/HTP(aka DSP) backend on Qualcomm's soC based high-end phone
- *
- * 4. GGML_OP_MUL_MAT & GGML_OP_MUL & GGML_OP_ADD using QNN API has been completed
- *
- * todo:
- *
- * 1. lack of implementation of other GGML-OPs using QNN API
- *
- * 2. only support FP32 / FP16 and the input and output tensors must be of the same data type
- *
- * 3. QNN's RPC feature(which useful for QNN HTP(aka DSP) backend) not used
- *
- * 4. multi QNN backend(CPU/GPU/DSP) simultaneously not support
- *
- * 5. multithreading not work with QNN GPU/HTP(aka DSP) backend
- *
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -89,6 +59,19 @@
 class qnn_instance;
 
 //TODO: should be removed because this is a workaround method during development stage
+//a minor modification is required during development stage for validate QNN backend on Android phone:
+//
+//modify from
+//
+//static void ggml_compute_forward(struct ggml_compute_params * params, struct ggml_tensor * tensor)
+//
+//to
+//
+//void ggml_compute_forward(struct ggml_compute_params * params, struct ggml_tensor * tensor)
+//
+//in source file ggml.c#L16156
+//
+//this workaround will not be needed when the final QNN backend is complete
 extern "C" void ggml_compute_forward(struct ggml_compute_params * params, struct ggml_tensor * tensor);
 
 #if (defined __ANDROID__) || (defined ANDROID) //Qualcomm's QNN could running on Windows over ARM(aka WoA)
@@ -838,7 +821,7 @@ static inline void set_qnn_tensor_memhandle(Qnn_Tensor_t * tensor, Qnn_MemHandle
 
 
 static size_t memscpy(void * dst, size_t dstSize, const void * src, size_t copySize) {
-    if (!dst || !src || !dstSize || !copySize) 
+    if (!dst || !src || !dstSize || !copySize)
         return 0;
 
     size_t minSize = dstSize < copySize ? dstSize : copySize;
@@ -946,7 +929,7 @@ static int free_qnn_tensor(Qnn_Tensor_t & tensor) {
         QNN_LOG_INFO("it should not happen, pls check");
     } else {
         //TODO:why crash in here? why pointer changed with mul_mat?
-        //memory leak after comment above line
+        //memory leak after comment below line
         //free(QNN_TENSOR_GET_DIMENSIONS(tensor));
     }
 
@@ -1043,7 +1026,7 @@ static Qnn_DataType_t qnn_datatype_from_ggml_datatype(enum ggml_type ggmltype) {
 }
 
 
-//TODO:
+//TODO: only support GGML_OP_ADD/GGML_OP_MUL/GGML_OP_MUL_MAT
 static const char * qnn_opname_from_ggmlop(enum ggml_op ggmlop) {
     switch (ggmlop) {
         case GGML_OP_ADD:
@@ -1204,16 +1187,10 @@ static buf_element_t * qnn_buf_buffer_get (qnn_buf_t * fifo) {
     buf_element_t * buf = nullptr;
 
     pthread_mutex_lock (&fifo->mutex);
-#if 0
-    while (fifo->first == nullptr) {
-        pthread_cond_wait (&fifo->not_empty, &fifo->mutex);
-    }
-#else
     if (fifo->first == nullptr) {
         pthread_mutex_unlock (&fifo->mutex);
         return nullptr;
     }
-#endif
 
     buf = fifo->first;
 
@@ -1449,9 +1426,9 @@ static void ggml_qnn_log_internal(ggml_log_level level, const char * file, const
         int len = vsnprintf(s_ggml_qnn_log_internal_buf + len_prefix, GGML_QNN_LOGBUF_LEN - len_prefix, format, args);
         if (len < (GGML_QNN_LOGBUF_LEN - len_prefix)) {
 #if (defined __ANDROID__) || (defined ANDROID)
-            __android_log_print(level, "llamacpp", "%s", s_ggml_qnn_log_internal_buf);
+            __android_log_print(level, "ggml-qnn", "%s", s_ggml_qnn_log_internal_buf);
 #else
-            printf("%s", buffer); //Qualcomm's QNN could running on Window over ARM
+            printf("%s", buffer); //Qualcomm's QNN could running on Windows over ARM(aka WoA)
 #endif
         }
         va_end(args);
@@ -2095,11 +2072,11 @@ int qnn_instance::load_system() {
 
     _system_lib_handle = dlopen(system_lib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (nullptr == _system_lib_handle) {
-        QNN_LOG_WARN("can not pen QNN library %s, error: %s\n", system_lib_path.c_str(), dlerror());
+        QNN_LOG_WARN("can not open QNN library %s, error: %s\n", system_lib_path.c_str(), dlerror());
         return 1;
     }
 
-    auto *get_providers = reinterpret_cast<_pfn_QnnSystemInterface_getProviders *>(dlsym(
+    auto * get_providers = reinterpret_cast<_pfn_QnnSystemInterface_getProviders *>(dlsym(
             _system_lib_handle, "QnnSystemInterface_getProviders"));
     if (nullptr == get_providers) {
         QNN_LOG_WARN("can not load QNN symbol QnnSystemInterface_getProviders: %s\n", dlerror());
@@ -2223,7 +2200,7 @@ static void ggml_qnn_logcallback(const char * fmt,
         int len_content = 0;
         memset(s_ggml_qnn_logbuf, 0, GGML_QNN_LOGBUF_LEN);
         len_content = vsnprintf(reinterpret_cast<char *const>(s_ggml_qnn_logbuf), GGML_QNN_LOGBUF_LEN, fmt, argp);
-        //QNN_LOG_DEBUG("%8.1fms [%-7s] %s ", ms, levelStr, s_ggml_qnn_logbuf);
+        QNN_LOG_DEBUG("%8.1fms [%-7s] %s ", ms, levelStr, s_ggml_qnn_logbuf);
     }
 }
 
@@ -2303,15 +2280,6 @@ int qnn_instance::qnn_init(const QnnSaver_Config_t ** saver_config) {
         QNN_LOG_INFO("create device successfully\n");
     }
 
-    /*
-    std::vector<const QnnDevice_Config_t*> temp_device_config;
-    _qnn_interface.qnn_device_create(_qnn_log_handle, temp_device_config.empty() ? nullptr : temp_device_config.data(), &_qnn_device_handle);
-    if (nullptr == _qnn_device_handle) {
-        QNN_LOG_WARN("why failed to initialize qnn device\n");
-        //return 6;
-    }
-    */
-
     if (ggml_qnn_profile_level::profile_off != _profile_level) {
         QNN_LOG_INFO("profiling turned on; level = %d", _profile_level);
         if (ggml_qnn_profile_level::profile_basic == _profile_level) {
@@ -2377,7 +2345,7 @@ int qnn_instance::qnn_init(const QnnSaver_Config_t ** saver_config) {
 }
 
 
-//QNN SDK would/might/should release all allocated resource in SDK's internal
+//QNN SDK would/might/should release all allocated internal QNN resource in SDK's internal
 int qnn_instance::qnn_finalize() {
     int ret_status = 0;
     Qnn_ErrorHandle_t error = QNN_SUCCESS;
@@ -3592,7 +3560,6 @@ bool ggml_qnn_compute_forward(struct ggml_compute_params * params, struct ggml_t
     }
 
 
-    //ok, real show time in Qualcomm's QNN internal
     if (nullptr != func)
         func(tensor->src[0], tensor->src[1], tensor);
     if (nullptr != func_common)
@@ -3832,7 +3799,7 @@ static size_t ggml_backend_qnn_buffer_type_get_alignment(ggml_backend_buffer_typ
 static size_t ggml_backend_qnn_buffer_type_get_max_size(ggml_backend_buffer_type_t buft) {
     GGML_UNUSED(buft);
 
-    return (38 * 1024 * 1024);
+    return (96 * 1024 * 1024);
 }
 
 
@@ -4429,6 +4396,7 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads, int n_cur_
 }
 
 
+#if 0 //replaced with ggml_status ggml_backend_qnn_graph_compute_multithread
 static void * ggml_graph_compute_thread(void * data) {
     struct ggml_compute_state * state = (struct ggml_compute_state *) data;
 
@@ -4563,6 +4531,7 @@ static void * ggml_graph_compute_thread(void * data) {
 
     return 0;
 }
+#endif
 
 
 static ggml_status ggml_backend_qnn_graph_compute_multithread(ggml_backend_t backend, ggml_cgraph * cgraph) {
@@ -4579,6 +4548,7 @@ static ggml_status ggml_backend_qnn_graph_compute_multithread(ggml_backend_t bac
 
     if (plan.work_size > 0) {
         //QNN_LOG_INFO("work size %d(%d MB)", plan.work_size, plan.work_size / (1 << 20));
+        //TODO:using memory pool to avoid dynamic memory allocation/free
         plan.work_data = static_cast<uint8_t *>(malloc(plan.work_size));
         if (plan.work_data == nullptr) {
             QNN_LOG_ERROR("malloc failed");
@@ -4650,6 +4620,7 @@ static ggml_status ggml_backend_qnn_graph_compute_multithread(ggml_backend_t bac
     }
 
     if (plan.work_data != nullptr) {
+        //TODO:using memory pool to avoid dynamic memory allocation/free
         free(plan.work_data);
     }
 
@@ -4766,7 +4737,8 @@ ggml_backend_buffer_type_t ggml_backend_qnn_buffer_type(size_t device_index) {
 /**
  *
  * @param device            0: QNN_CPU 1: QNN_GPU 2: QNN_HTP(aka DSP)
- * @param qnn_lib_path      qnn library path, such as "/data/data/com.ggml.llamacpp/" on Android which can got by JNI from Java layer
+ * @param qnn_lib_path      this param is Andorid APP's data path, such as "/data/data/com.ggml.llamacpp/"
+ *                          which can be obtained through JNI from Java layer
  * @return
  */
 ggml_backend_t ggml_backend_qnn_init(size_t device, const char * qnn_lib_path) {
