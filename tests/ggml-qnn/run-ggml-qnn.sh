@@ -27,4 +27,4 @@ else
 fi
 
 adb shell chmod +x /data/local/tmp/${GGML_QNN_TEST}
-adb shell /data/local/tmp/${GGML_QNN_TEST}
+adb shell /data/local/tmp/${GGML_QNN_TEST} perf
