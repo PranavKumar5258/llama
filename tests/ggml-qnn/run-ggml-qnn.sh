@@ -1,6 +1,8 @@
 #!/bin/bash
 
-#modify following lines to adapt to local dev envs
+#modify following line to adapt to local dev envs
+#https://qpm.qualcomm.com/#/main/tools/details/qualcomm_ai_engine_direct
+#https://developer.qualcomm.com/software/hexagon-dsp-sdk/tools
 QNN_SDK_PATH=/opt/qcom/aistack/qnn/2.20.0.240223/
 
 GGML_QNN_TEST=ggml-qnn-test
@@ -10,7 +12,7 @@ adb push ${GGML_QNN_TEST} ${REMOTE_PATH}
 
 adb shell ls ${REMOTE_PATH}/libQnnCpu.so
 if [ $? -eq 0 ]; then
-    printf "QNN libs already exist\n"
+    printf "QNN libs already exist on Android phone\n"
 else
     adb push ${QNN_SDK_PATH}/lib/aarch64-android/libQnnSystem.so              ${REMOTE_PATH}/
     adb push ${QNN_SDK_PATH}/lib/aarch64-android/libQnnCpu.so                 ${REMOTE_PATH}/

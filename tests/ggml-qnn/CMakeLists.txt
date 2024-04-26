@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(ggml-qnn)
+project(ggml-qnn-test)
 
 set(CMAKE_VERBOSE_MAKEFILE          on)
 set(CMAKE_CXX_STANDARD              17)
 set(CMAKE_CXX_STANDARD_REQUIRED     ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+#set to ON if target Android phone is based on Qualcomm Snapdragon 8 Gen 3
 set(TARGET_SNAPDRAGON_8_GEN3        OFF)
 
 set(LLAMACPP_SRC_PATH               ${PROJECT_ROOT_PATH})
@@ -37,8 +38,10 @@ message("target name          : ${TARGET_NAME}")
 add_definitions(-D__ARM_NEON)
 add_definitions(-DGGML_USE_QNN)
 
+if(CMAKE_BUILD_TYPE STREQUAL "release")
 add_definitions(-DNDEBUG)
 add_definitions(-O3)
+endif()
 
 if (TARGET_SNAPDRAGON_8_GEN3)
 # the below build optimization only works well on Qualcomm SM8650-AB Snapdragon 8 Gen 3
