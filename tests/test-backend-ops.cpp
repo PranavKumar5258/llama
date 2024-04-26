@@ -2332,11 +2332,7 @@ int main(int argc, char ** argv) {
             continue;
         }
 
-#ifdef GGML_USE_QNN
-        ggml_backend_t backend = ggml_backend_reg_init_backend(i, "/data/local/tmp/");
-#else
         ggml_backend_t backend = ggml_backend_reg_init_backend(i, NULL);
-#endif
         GGML_ASSERT(backend != NULL);
 
         if (backend_filter == NULL && ggml_backend_is_cpu(backend)) {

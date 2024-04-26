@@ -4666,6 +4666,12 @@ static ggml_guid_t ggml_backend_qnn_guid() {
 
 
 static ggml_backend_t ggml_backend_qnn_reg_init(const char * params, void * user_data) {
+    if (nullptr == params) {
+        //this is data path of prebuit QNN libs provided by Qualcomm
+        //can be obtained through JNI from Java layer such as "/data/data/com.ggml.llamacpp/"
+        //or hardcoded to "/data/local/tmp/" which is an Android OS defined path
+        params = "/data/local/tmp/";
+    }
     ggml_backend_t qnn_backend = ggml_backend_qnn_init((int) (intptr_t) user_data, params);
 
     return qnn_backend;
