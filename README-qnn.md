@@ -86,23 +86,44 @@ TBD
 
 ## Android
 
-### I. Setup Environment
+### 1. Setup Environment
 
 Any **mainstream** Android phone based on Qualcomm's mobile SoC should be supported by llama.cpp + QNN. Qualcomm SM8650-AB Snapdragon 8 Gen 3 based Android phone is preferred.
 
-### II. Build llama.cpp + QNN backend
+### 2. Build llama.cpp + QNN backend
+
+- download and install QNN SDK from Qualcomm offcial website
+
+```
+  https://qpm.qualcomm.com/#/main/tools/details/qualcomm_ai_engine_direct
+
+  https://developer.qualcomm.com/software/hexagon-dsp-sdk/tools
+
+```
+
+  the default installation path is /opt/qcom/aistack/qnn/2.20.0.240223/
 
 
-Please refer to [project kantv](https://github.com/zhouwg/kantv)
+- using test-backend-ops.cpp to verify QNN backend on Qualcomm mobile SoC based Android phone
 
+```
+  cd tests/ggml-qnn
 
-or
+  ./build-ggml-qnn.sh
 
+```
 
-using [test-backend-ops.cpp](tests/ggml-qnn) to verify it on Qualcomm mobile SoC based Android phone
+### 3. Run UT of QNN backend on Qualcomm mobile SoC based Android phone
 
-### III. Run the inference on Qualcomm mobile SoC based Android phone
+```
 
+  ./run-ggml-qnn.sh
+
+```
+
+### 4. Run the inference on Qualcomm mobile SoC based Android phone
+
+Pls refer to [project kantv](https://github.com/zhouwg/kantv) firstly.
 
 ![504893116](https://github.com/zhouwg/kantv/assets/6889919/51f0b277-eca4-4938-86f5-415dbf5897e7)
 

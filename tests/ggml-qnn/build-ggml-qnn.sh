@@ -3,7 +3,7 @@
 set -e
 
 #modify following lines to adapt to local dev envs
-PROJECT_ROOT_PATH=~/github/llama.cpp/
+LLAMACPP_ROOT_PATH=~/github/llama.cpp/
 #https://qpm.qualcomm.com/#/main/tools/details/qualcomm_ai_engine_direct
 #https://developer.qualcomm.com/software/hexagon-dsp-sdk/tools
 QNN_SDK_PATH=/opt/qcom/aistack/qnn/2.20.0.240223/
@@ -61,7 +61,7 @@ function check_and_download_ndk()
 
 function build_arm64
 {
-    cmake -H. -B./out/arm64-v8a -DPROJECT_ROOT_PATH=${PROJECT_ROOT_PATH} -DTARGET_NAME=${TARGET} -DCMAKE_BUILD_TYPE=${PROJECT_BUILD_TYPE} -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=${ANDROID_PLATFORM} -DANDROID_NDK=${ANDROID_NDK}  -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake -DQNN_SDK_PATH=${QNN_SDK_PATH}
+    cmake -H. -B./out/arm64-v8a -DPROJECT_ROOT_PATH=${LLAMACPP_ROOT_PATH} -DTARGET_NAME=${TARGET} -DCMAKE_BUILD_TYPE=${PROJECT_BUILD_TYPE} -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=${ANDROID_PLATFORM} -DANDROID_NDK=${ANDROID_NDK}  -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake -DQNN_SDK_PATH=${QNN_SDK_PATH}
 
     cd ./out/arm64-v8a
     make
