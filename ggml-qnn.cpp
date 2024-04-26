@@ -3999,6 +3999,8 @@ static bool ggml_backend_qnn_supports_op(ggml_backend_t backend, const ggml_tens
 
     switch (op->op) {
         case GGML_OP_MUL_MAT:
+        case GGML_OP_MUL:
+        case GGML_OP_ADD:
             return true;
         default:
             return false;
