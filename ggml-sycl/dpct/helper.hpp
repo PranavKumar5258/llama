@@ -10,6 +10,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
+#ifndef GGML_SYCL_DPCT_HELPER_HPP
+#define GGML_SYCL_DPCT_HELPER_HPP
 
 #include <sycl/sycl.hpp>
 #include <sycl/half_type.hpp>
@@ -56,7 +58,7 @@
 #define __dpct_noinline__ __attribute__((noinline))
 #endif
 
-std::string get_device_type_name(const sycl::device &Device) {
+inline std::string get_device_type_name(const sycl::device &Device) {
     auto DeviceType = Device.get_info<sycl::info::device::device_type>();
     switch (DeviceType) {
     case sycl::info::device_type::cpu:
@@ -72,7 +74,7 @@ std::string get_device_type_name(const sycl::device &Device) {
     }
 }
 
-std::string get_device_backend_and_type(const sycl::device &device) {
+inline std::string get_device_backend_and_type(const sycl::device &device) {
     std::stringstream device_type;
     sycl::backend backend = device.get_backend();
     device_type <<  backend << ":" << get_device_type_name(device);
@@ -2935,3 +2937,5 @@ namespace dpct
 
 
 } // COPY from DPCT head files
+
+#endif // GGML_SYCL_DPCT_HELPER_HPP
