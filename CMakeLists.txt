@@ -91,6 +91,7 @@ endif()
 option(LLAMA_ACCELERATE                      "llama: enable Accelerate framework"               ON)
 option(LLAMA_BLAS                            "llama: use BLAS"                                  OFF)
 option(LLAMA_LLAMAFILE                       "llama: use llamafile SGEMM"                       ${LLAMA_LLAMAFILE_DEFAULT})
+option(LLAMA_AARCH64                         "llama: use aarch64 optimized GEMM & GEMV kernels" ON)
 set(LLAMA_BLAS_VENDOR "Generic" CACHE STRING "llama: BLAS library vendor")
 option(LLAMA_CUDA                            "llama: use CUDA"                                  OFF)
 option(LLAMA_CUBLAS                          "llama: use CUDA (deprecated, use LLAMA_CUDA)"     OFF)
@@ -377,6 +378,11 @@ if (LLAMA_LLAMAFILE)
 
     set(GGML_HEADERS_LLAMAFILE sgemm.h)
     set(GGML_SOURCES_LLAMAFILE sgemm.cpp)
+endif()
+
+if (LLAMA_AARCH64)
+    set(GGML_HEADERS_AARCH64 ggml-aarch64.h)
+    set(GGML_SOURCES_AARCH64 ggml-aarch64.cpp)
 endif()
 
 if (LLAMA_QKK_64)
@@ -1172,6 +1178,7 @@ add_library(ggml OBJECT
             ${GGML_SOURCES_VULKAN}    ${GGML_HEADERS_VULKAN}
             ${GGML_SOURCES_ROCM}      ${GGML_HEADERS_ROCM}
             ${GGML_SOURCES_LLAMAFILE} ${GGML_HEADERS_LLAMAFILE}
+	    ${GGML_SOURCES_AARCH64}   ${GGML_HEADERS_AARCH64}
             )
 
 target_include_directories(ggml PUBLIC . ${LLAMA_EXTRA_INCLUDES})
