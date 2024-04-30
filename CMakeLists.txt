@@ -793,6 +793,75 @@ if (LLAMA_CPU_HBM)
     target_link_libraries(ggml PUBLIC memkind)
 endif()
 
+if (LLAMA_CANN)
+    if ("cann${CANN_INSTALL_DIR}" STREQUAL "cann" AND DEFINED ENV{ASCEND_TOOLKIT_HOME})
+        set(CANN_INSTALL_DIR $ENV{ASCEND_TOOLKIT_HOME})
+        message(STATUS "CANN: updated CANN_INSTALL_DIR from ASCEND_TOOLKIT_HOME=$ENV{ASCEND_TOOLKIT_HOME}")
+    endif()
+
+    if (CANN_INSTALL_DIR)
+        # Only Support Linux.
+        if (LLAMA_CANN)
+            if (NOT UNIX)
+                set(LLAMA_CANN OFF)
+                message(WARNING "CANN: CANN toolkit supports unix but not ${CMAKE_SYSTEM_NAME}. Turning off LLAMA_CANN")
+            endif()
+        endif()
+
+        # Supported platforms: x86-64, arm64
+        if (LLAMA_CANN)
+            if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+            elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "amd64")
+            else()
+                set(LLAMA_CANN OFF)
+                message(WARNING "CANN: CANN toolkit supports x86-64 and arm64 but not ${CMAKE_SYSTEM_PROCESSOR}. Turning off LLAMA_CANN")
+            endif()
+        endif()
+
+        # Set header and libs
+        if(LLAMA_CANN)
+            set(CANN_INCLUDE_DIRS 
+                ${CANN_INSTALL_DIR}/include
+                ${CANN_INSTALL_DIR}/include/aclnn
+                ${CANN_INSTALL_DIR}/acllib/include
+            )
+
+            # TODO: find libs
+            link_directories(
+                ${CANN_INSTALL_DIR}/lib64 
+                ${CANN_INSTALL_DIR}/aarch64-linux/simulator/Ascend910B1/lib 
+                ${CANN_INSTALL_DIR}/../8.0.RC1.alpha003/tools/tikicpulib/lib/Ascend910B1)
+
+            add_subdirectory(ggml-cann/kernels)
+            list(APPEND CANN_LIBRARIES
+                ascendcl
+                nnopbase
+                opapi
+                acl_op_compiler
+                cann_kernels
+            )
+
+            set(GGML_HEADERS_CANN ggml-cann.h)
+            file(GLOB GGML_SOURCES_CUDA "ggml-cann/*.cpp")
+            list(APPEND GGML_SOURCES_CANN "ggml-cann.cpp")
+
+            message(STATUS "CANN: CANN_INCLUDE_DIRS =  ${CANN_INCLUDE_DIRS}")
+            message(STATUS "CANN: CANN_LIBRARIES =  ${CANN_LIBRARIES}")
+
+            set(LLAMA_EXTRA_LIBS     ${LLAMA_EXTRA_LIBS}     ${CANN_LIBRARIES} )
+            set(LLAMA_EXTRA_INCLUDES ${LLAMA_EXTRA_INCLUDES} ${CANN_INCLUDE_DIRS})
+            add_compile_definitions(GGML_USE_CANN)
+        endif()
+    else()
+        set(LLAMA_CANN OFF)
+        message(WARNING "CANN: Can't find CANN_INSTALL_DIR, do you forget to source set_var.sh. Turning off LLAMA_CANN")
+    endif()
+
+    if(NOT LLAMA_CANN)
+        message(WARNING "CANN: LLAMA_CANN is turned OFF, see above for details.")
+    endif()
+endif()
+
 if (LLAMA_PERF)
     add_compile_definitions(GGML_PERF)
 endif()
@@ -1172,6 +1241,7 @@ add_library(ggml OBJECT
             ${GGML_SOURCES_VULKAN}    ${GGML_HEADERS_VULKAN}
             ${GGML_SOURCES_ROCM}      ${GGML_HEADERS_ROCM}
             ${GGML_SOURCES_LLAMAFILE} ${GGML_HEADERS_LLAMAFILE}
+            ${GGML_SOURCES_CANN}    ${GGML_HEADERS_CANN}
             )
 
 target_include_directories(ggml PUBLIC . ${LLAMA_EXTRA_INCLUDES})
