@@ -686,5 +686,5 @@ dequantize_block_iq4_xs(const void *__restrict__ vx, dst_t *__restrict__ yy,
     }
 }
 
-    
+
 #endif // GGML_SYCL_DEQUANTIZE_HPP
