@@ -31,21 +31,6 @@ void check_allow_gpu_index(const int device_index) {
   }
 }
 
-void check_allow_gpu_id(const int device_id) {
-  if (!g_sycl_gpu_mgr->is_allowed_gpu(device_id)) {
-    char error_buf[256];
-    snprintf(
-        error_buf,
-        sizeof(error_buf),
-        "error: cannot set device=%d, which is not allowed. Please "
-        "set GPU ID in: [%s]",
-        device_id,
-        g_sycl_gpu_mgr->gpus_list.c_str());
-    fprintf(stderr, "%s\n", error_buf);
-    throw std::invalid_argument(error_buf);
-  }
-}
-
 int get_current_device_id() {
   return dpct::dev_mgr::instance().current_device_id();
 }
