@@ -1,5 +1,7 @@
+#include "convert.hpp"
 #include "dmmv.hpp"
 #include "dequantize.hpp"
+#include "pool.hpp"
 
 static void convert_f16(const void * vx, const int ib, const int iqs, dfloat2 & v){
     const sycl::half *x = (const sycl::half *)vx;
