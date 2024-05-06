@@ -16,21 +16,6 @@ int get_main_device() {
   return g_main_device;
 }
 
-void check_allow_gpu_index(const int device_index) {
-  if (device_index >= g_device_count) {
-    char error_buf[256];
-    snprintf(
-        error_buf,
-        sizeof(error_buf),
-        "%s error: device_index:%d is out of range: [0-%d]",
-        __func__,
-        device_index,
-        g_device_count - 1);
-    fprintf(stderr, "%s\n", error_buf);
-    assert(false);
-  }
-}
-
 int get_current_device_id() {
   return dpct::dev_mgr::instance().current_device_id();
 }

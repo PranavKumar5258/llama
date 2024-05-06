@@ -369,7 +369,20 @@ int get_main_device();
 device_index: device index from 0 to n (continue numbers).
     It is used for device select/set in SYCL backend internal data structure.
 */
-void check_allow_gpu_index(const int device_index);
+inline void check_allow_gpu_index(const int device_index) {
+  if (device_index >= g_device_count) {
+    char error_buf[256];
+    snprintf(
+        error_buf,
+        sizeof(error_buf),
+        "%s error: device_index:%d is out of range: [0-%d]",
+        __func__,
+        device_index,
+        g_device_count - 1);
+    fprintf(stderr, "%s\n", error_buf);
+    assert(false);
+  }
+}
 
 /*
 device_id: device ID is shown by ggml_backend_sycl_print_sycl_devices().

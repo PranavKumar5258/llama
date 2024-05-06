@@ -952,6 +952,20 @@ void ggml_sycl_op_dequantize_mul_mat_vec(
     const int64_t ne00 = src0->ne[0];
     const int64_t row_diff = row_high - row_low;
 
+            switch (src1->type)
+            {
+            case GGML_TYPE_F32:
+                printf("f32\n");
+                break;
+            case GGML_TYPE_Q4_0:
+                printf("q4_0\n");
+                break;
+            case GGML_TYPE_F16:
+                printf("f16\n");
+                break;
+            default:
+                break;
+            }
     GGML_ASSERT(src1->type == GGML_TYPE_F32);
 
     // on some GPUs it is faster to convert src1 to half and to use half precision intrinsics
