@@ -3194,6 +3194,7 @@ struct llama_model_loader {
                 case GGML_TYPE_IQ4_NL:  ftype = LLAMA_FTYPE_MOSTLY_IQ4_NL;  break;
                 case GGML_TYPE_IQ4_XS:  ftype = LLAMA_FTYPE_MOSTLY_IQ4_XS;  break;
                 case GGML_TYPE_IQ3_S:   ftype = LLAMA_FTYPE_MOSTLY_IQ3_S;   break;
+                case GGML_TYPE_Q4_0_AARCH64: ftype = LLAMA_FTYPE_MOSTLY_Q4_0_AARCH64; break;
                 default:
                     {
                         LLAMA_LOG_WARN("%s: unknown type %s\n", __func__, ggml_type_name(type_max));
@@ -3697,6 +3698,7 @@ static std::string llama_model_ftype_name(llama_ftype ftype) {
         case LLAMA_FTYPE_MOSTLY_IQ4_XS: return "IQ4_XS - 4.25 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ3_S:  return "IQ3_S - 3.4375 bpw";
         case LLAMA_FTYPE_MOSTLY_IQ3_M:  return "IQ3_S mix - 3.66 bpw";
+        case LLAMA_FTYPE_MOSTLY_Q4_0_AARCH64: return "Q4_0_AARCH64";
 
         default: return "unknown, may not work";
     }
@@ -14264,6 +14266,9 @@ static ggml_type llama_tensor_get_type(quantize_state_internal & qs, ggml_type n
             else if (ftype == LLAMA_FTYPE_MOSTLY_IQ3_XXS) {
                 new_type = GGML_TYPE_IQ3_S;
             }
+            else if (new_type == GGML_TYPE_Q4_0_AARCH64) {
+                new_type = GGML_TYPE_Q4_0;
+            }
         }
     } else if (ftype == LLAMA_FTYPE_MOSTLY_IQ2_XXS || ftype == LLAMA_FTYPE_MOSTLY_IQ2_XS || ftype == LLAMA_FTYPE_MOSTLY_IQ1_S ||
                ftype == LLAMA_FTYPE_MOSTLY_IQ2_S || ftype == LLAMA_FTYPE_MOSTLY_IQ2_M    || ftype == LLAMA_FTYPE_MOSTLY_IQ1_M) {
@@ -14577,6 +14582,7 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
         case LLAMA_FTYPE_MOSTLY_IQ4_XS:  default_type = GGML_TYPE_IQ4_XS;  break;
         case LLAMA_FTYPE_MOSTLY_IQ3_S:   default_type = GGML_TYPE_IQ3_S;   break;
         case LLAMA_FTYPE_MOSTLY_IQ3_M:   default_type = GGML_TYPE_IQ3_S;   break;
+        case LLAMA_FTYPE_MOSTLY_Q4_0_AARCH64: default_type = GGML_TYPE_Q4_0_AARCH64; break;
 
         default: throw std::runtime_error(format("invalid output file type %d\n", ftype));
     }
@@ -14873,6 +14879,12 @@ static void llama_model_quantize_internal(const std::string & fname_inp, const s
             } else {
                 llama_tensor_dequantize_internal(tensor, f32_conv_buf, workers, nelements, nthread);
                 f32_data = (float *) f32_conv_buf.data();
+            }
+
+            if (new_type == GGML_TYPE_Q4_0_AARCH64) {
+                if ((ggml_cpu_has_neon() == 0) && (ggml_cpu_has_sve() == 0)) new_type = GGML_TYPE_Q4_0;
+                if ((nelements / tensor->ne[0]) % 4 != 0) new_type = GGML_TYPE_Q4_0;
+                if (nthread > 1) nthread = 1;
             }
 
             LLAMA_LOG_INFO("converting to %s .. ", ggml_type_name(new_type));
@@ -17903,6 +17915,7 @@ const char * llama_print_system_info(void) {
 #else
     s += "LLAMAFILE = 0 | ";
 #endif
+    s += "SVE = "         + std::to_string(ggml_cpu_has_sve())         + " | ";
 
     return s.c_str();
 }
