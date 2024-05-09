@@ -15139,8 +15139,10 @@ void llama_backend_init(void) {
         ggml_free(ctx);
     }
 
-#ifdef GGML_USE_MPI
+#if defined(GGML_USE_MPI)
     ggml_mpi_backend_init();
+#elif defined(GGML_USE_CANN)
+    ggml_cann_backend_init();
 #endif
 }
 
@@ -15151,8 +15153,10 @@ void llama_numa_init(enum ggml_numa_strategy numa) {
 }
 
 void llama_backend_free(void) {
-#ifdef GGML_USE_MPI
+#if defined(GGML_USE_MPI)
     ggml_mpi_backend_free();
+#elif defined(GGML_USE_CANN)
+    ggml_cann_backend_init();
 #endif
     ggml_quantize_free();
 }
