@@ -47,7 +47,6 @@ if (BUILD_SHARED_LIBS)
     set_target_properties(${TARGET} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
-
 set(TARGET common)
 
 add_library(${TARGET} STATIC
@@ -60,8 +59,12 @@ add_library(${TARGET} STATIC
     console.cpp
     grammar-parser.h
     grammar-parser.cpp
+    json.hpp
+    json-schema-to-grammar.cpp
     train.h
     train.cpp
+    ngram-cache.h
+    ngram-cache.cpp
     )
 
 if (BUILD_SHARED_LIBS)

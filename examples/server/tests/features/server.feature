@@ -4,9 +4,10 @@ Feature: llama.cpp server
 
   Background: Server startup
     Given a server listening on localhost:8080
-    And   a model url https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf
-    And   a model file stories260K.gguf
+    And   a model file tinyllamas/stories260K.gguf from HF repo ggml-org/models
+    And   a model file test-model.gguf
     And   a model alias tinyllama-2
+    And   BOS token is 1
     And   42 as server seed
       # KV Cache corresponds to the total amount of tokens
       # that can be stored across all independent sequences: #4130
@@ -70,12 +71,39 @@ Feature: llama.cpp server
       | codellama70b | You are a coding assistant. | Write the fibonacci function in c++. | 128        | (thanks\|happy\|bird\|Annabyear)+ | -1       | 64          | enabled          |           |
 
 
+  Scenario Outline: OAI Compatibility w/ response format
+    Given a model test
+    And   a system prompt test
+    And   a user prompt test
+    And   a response format <response_format>
+    And   10 max tokens to predict
+    Given an OAI compatible chat completions request with no api error
+    Then  <n_predicted> tokens are predicted matching <re_content>
+
+    Examples: Prompts
+      | response_format                                                     | n_predicted | re_content             |
+      | {"type": "json_object", "schema": {"const": "42"}}                  | 5           | "42"                   |
+      | {"type": "json_object", "schema": {"items": [{"type": "integer"}]}} | 10          | \[ -300 \]             |
+      | {"type": "json_object"}                                             | 10          | \{ " Jacky.            |
+
+
   Scenario: Tokenize / Detokenize
     When tokenizing:
     """
     What is the capital of France ?
     """
-    Then tokens can be detokenize
+    Then tokens can be detokenized
+    And  tokens do not begin with BOS
+
+  Scenario: Tokenize w/ BOS
+    Given adding special tokens
+    When  tokenizing:
+    """
+    What is the capital of Germany?
+    """
+    Then  tokens begin with BOS
+    Given first token is removed
+    Then  tokens can be detokenized
 
   Scenario: Models available
     Given available models
