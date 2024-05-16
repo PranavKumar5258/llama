@@ -1178,7 +1178,7 @@ add_library(ggml OBJECT
             ${GGML_SOURCES_VULKAN}    ${GGML_HEADERS_VULKAN}
             ${GGML_SOURCES_ROCM}      ${GGML_HEADERS_ROCM}
             ${GGML_SOURCES_LLAMAFILE} ${GGML_HEADERS_LLAMAFILE}
-	    ${GGML_SOURCES_AARCH64}   ${GGML_HEADERS_AARCH64}
+            ${GGML_SOURCES_AARCH64}   ${GGML_HEADERS_AARCH64}
             )
 
 target_include_directories(ggml PUBLIC . ${LLAMA_EXTRA_INCLUDES})
