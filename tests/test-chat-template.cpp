@@ -53,7 +53,7 @@ int main(void) {
         "{{ bos_token }}{% for message in messages %}{{'<|' + message['role'] + '|>' + ' ' + message['content'] + '<|end|> ' }}{% endfor %}{% if add_generation_prompt %}{{ '<|assistant|> ' }}{% else %}{{ eos_token }}{% endif %}",
         // meta-math/MetaMath-7B-V1.0
         // No template included in tokenizer_config.json, so this template likely needs to be manually set.
-        "{% if messages[0]['role'] == 'system' %}{% set loop_messages = messages[1:] %}{% set system_message = messages[0]['content'] + '\n\n' %}{% else %}{% set loop_messages = messages %}{% set system_message = '' %}{% endif %}{{ system_message }}{% for message in loop_messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}{{ '### Instruction:\n' + message['content'] + '\n\n' }}{% elif message['role'] == 'assistant' %}{{ '### Response:\n' + message['content'] + eos_token + '\n\n' }}{% endif %}{% if loop.last and message['role'] == 'user' and add_generation_prompt %}{{ '### Instruction:\n' }}{% endif %}{% endfor %}",
+        "{% if messages[0]['role'] == 'system' %}{% set loop_messages = messages[1:] %}{% set system_message = messages[0]['content'] + '\n\n' %}{% else %}{% set loop_messages = messages %}{% set system_message = '' %}{% endif %}{{ system_message }}{% for message in loop_messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if message['role'] == 'user' %}{{ '### Instruction:\n' + message['content'] + '\n\n' }}{% elif message['role'] == 'assistant' %}{{ '### Response:\n' + message['content'] + eos_token + '\n\n' }}{% endif %}{% if loop.last and message['role'] == 'user' and add_generation_prompt %}{{ '### Response:\n' }}{% endif %}{% endfor %}"
     };
     std::vector<std::string> expected_output = {
         // teknium/OpenHermes-2.5-Mistral-7B
@@ -85,7 +85,7 @@ int main(void) {
         // Phi 3
         "<|system|>\nYou are a helpful assistant<|end|>\n<|user|>\nHello<|end|>\n<|assistant|>\nHi there<|end|>\n<|user|>\nWho are you<|end|>\n<|assistant|>\nI am an assistant<|end|>\n<|user|>\nAnother question<|end|>\n<|assistant|>\n",
         // meta-math/MetaMath-7B-V1.0
-        "You are a helpful assistant\n\n### Instruction:\nHello\n\n### Response:\nHi there</s>\n\n### Instruction:\nWho are you\n\n### Response:\n   I am an assistant   </s>\n\n### Instruction:\nAnother question\n\n### Instruction:\n",
+        "You are a helpful assistant\n\n### Instruction:\nHello\n\n### Response:\nHi there</s>\n\n### Instruction:\nWho are you\n\n### Response:\n   I am an assistant   </s>\n\n### Instruction:\nAnother question\n\n### Response:\n",
     };
     std::vector<char> formatted_chat(1024);
     int32_t res;
