@@ -75,6 +75,8 @@ class GGUFWriter:
             "Big" if self.endianess == GGUFEndian.BIG else "Little",
         ))
         self.state = WriterState.EMPTY
+        # namedobject
+        self.namedobject_count = 0 
 
         self.add_architecture()
 
@@ -165,7 +167,33 @@ class GGUFWriter:
         self.add_key(key)
         self.add_val(val, GGUFValueType.ARRAY)
 
-    def add_val(self, val: Any, vtype: GGUFValueType | None = None, add_vtype: bool = True) -> None:
+    def add_namedobject(self, key: str, val: bytes[Any], name: str, array: NamedObject[Any] | None = None) -> None:
+        # array: False: add as each namedobject, True: add as each element of array of namedobject
+        if not name:
+            raise ValueError("Need name for namedobject")
+        if not val:
+            raise ValueError("Need val for namedobject")
+
+        if array is None:
+            self.namedobject_count += 1
+            key = Keys.General.NAMEDOBJECT + Keys.General.CONNECT + str(self.namedobject_count)
+            self.add_key(key)
+            self.add_val(val, GGUFValueType.NAMEDOBJECT, name=name)
+        else:
+            # if array, val and name is dammy
+            key = Keys.General.NAMEDOBJECT
+            self.add_key(key)
+            vtype = GGUFValueType.ARRAY
+            self.kv_data += self._pack("I", vtype)
+            self.kv_data_count += 1
+            ltype = GGUFValueType.NAMEDOBJECT
+            self.kv_data += self._pack("I", ltype)
+            self.kv_data += self._pack("Q", len(array))
+            for item in array:
+                self.add_val(item.obj, GGUFValueType.NAMEDOBJECT, add_vtype=False, name=item.name)
+
+
+    def add_val(self, val: Any, vtype: GGUFValueType | None = None, add_vtype: bool = True, name: str | None = None) -> None:
         if vtype is None:
             vtype = GGUFValueType.get_type(val)
 
@@ -180,6 +208,12 @@ class GGUFWriter:
             encoded_val = val.encode("utf-8") if isinstance(val, str) else val
             self.kv_data += self._pack("Q", len(encoded_val))
             self.kv_data += encoded_val
+        elif vtype == GGUFValueType.NAMEDOBJECT:
+            encoded_name = name.encode("utf8") if isinstance(name, str) else name
+            self.kv_data += self._pack("Q", len(encoded_name))
+            self.kv_data += encoded_name
+            self.kv_data += self._pack("Q", len(val))
+            self.kv_data += val
         elif vtype == GGUFValueType.ARRAY and isinstance(val, Sequence) and val:
             ltype = GGUFValueType.get_type(val[0])
             if not all(GGUFValueType.get_type(i) is ltype for i in val[1:]):
