@@ -17995,6 +17995,21 @@ static int32_t llama_chat_apply_template_internal(
         if (add_ass) {
             ss << "<|assistant|>\n";
         }
+    } else if (tmpl == "alpaca" || (tmpl.find("### Instruction:") != std::string::npos && tmpl.find("### Response:") != std::string::npos)) {
+        // meta-math/MetaMath-7B-V1.0
+        for (auto message : chat) {
+            std::string role(message->role);
+            if (role == "system") {
+                ss << message->content << "\n\n";
+            } else if (role == "user") {
+                ss << "### Instruction:\n" << message->content << "\n\n";
+            } else if (role == "assistant") {
+                ss << "### Response:\n" << message->content << "</s>\n\n";
+            }
+        }
+        if (add_ass) {
+            ss << "### Response:\n";
+        }
     } else {
         // template not supported
         return -1;
