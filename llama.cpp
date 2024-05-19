@@ -17995,7 +17995,7 @@ static int32_t llama_chat_apply_template_internal(
         if (add_ass) {
             ss << "<|assistant|>\n";
         }
-    } else if (tmpl == "alpaca" || (tmpl.find("### Instruction:") != std::string::npos && tmpl.find("### Response:") != std::string::npos)) {
+    } else if (tmpl == "alpaca" || (tmpl.find("### Instruction:") != std::string::npos && tmpl.find("<|EOT|>") == std::string::npos)) {
         // meta-math/MetaMath-7B-V1.0
         for (auto message : chat) {
             std::string role(message->role);
