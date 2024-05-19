@@ -18004,7 +18004,7 @@ static int32_t llama_chat_apply_template_internal(
             } else if (role == "user") {
                 ss << "### Instruction:\n" << message->content << "\n\n";
             } else if (role == "assistant") {
-                ss << "### Response:\n" << message->content << "</s>\n\n";
+                ss << "### Response:\n" << message->content << "\n\n";
             }
         }
         if (add_ass) {
