@@ -392,8 +392,7 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
                 invalid_param = true;
                 break;
             }
-            auto p = split<std::string>(argv[i], split_delim);
-            params.rpc_servers.insert(params.rpc_servers.end(), p.begin(), p.end());
+            params.rpc_servers.push_back(argv[i]);
         } else if (arg == "-sm" || arg == "--split-mode") {
             if (++i >= argc) {
                 invalid_param = true;
@@ -608,6 +607,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
     // this ordering minimizes the number of times that each model needs to be reloaded
     for (const auto & m : params.model)
     for (const auto & nl : params.n_gpu_layers)
+    for (const auto & rpc : params.rpc_servers)
     for (const auto & sm : params.split_mode)
     for (const auto & mg : params.main_gpu)
     for (const auto & ts : params.tensor_split)
@@ -634,7 +634,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .type_v       = */ tv,
                 /* .n_threads    = */ nt,
                 /* .n_gpu_layers = */ nl,
-                /* .rpc_servers  = */ join(params.rpc_servers, ","),
+                /* .rpc_servers  = */ rpc,
                 /* .split_mode   = */ sm,
                 /* .main_gpu     = */ mg,
                 /* .no_kv_offload= */ nkvo,
@@ -660,7 +660,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .type_v       = */ tv,
                 /* .n_threads    = */ nt,
                 /* .n_gpu_layers = */ nl,
-                /* .rpc_servers  = */ join(params.rpc_servers, ","),
+                /* .rpc_servers  = */ rpc,
                 /* .split_mode   = */ sm,
                 /* .main_gpu     = */ mg,
                 /* .no_kv_offload= */ nkvo,
@@ -686,7 +686,7 @@ static std::vector<cmd_params_instance> get_cmd_params_instances(const cmd_param
                 /* .type_v       = */ tv,
                 /* .n_threads    = */ nt,
                 /* .n_gpu_layers = */ nl,
-                /* .rpc_servers  = */ join(params.rpc_servers, ","),
+                /* .rpc_servers  = */ rpc,
                 /* .split_mode   = */ sm,
                 /* .main_gpu     = */ mg,
                 /* .no_kv_offload= */ nkvo,
