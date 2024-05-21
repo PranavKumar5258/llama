@@ -78,6 +78,9 @@ static int g_work_group_size = 0;
 #define GGML_SYCL_MMV_Y 1
 #endif
 
+typedef sycl::queue *queue_ptr;
+typedef sycl::handler *handle_ptr;
+
 enum ggml_sycl_backend_gpu_mode {
   SYCL_UNSET_GPU_MODE = -1,
   SYCL_SINGLE_GPU_MODE = 0,
@@ -182,17 +185,6 @@ static_assert(
 #endif // GGML_SYCL_PEER_MAX_BATCH_SIZE
 
 #define MUL_MAT_SRC1_COL_STRIDE 128
-#define MAX_STREAMS 8
-#define SYCL_MAX_DEVICES 48
-
-static dpct::queue_ptr g_syclStreams[SYCL_MAX_DEVICES][MAX_STREAMS] = {{0}};
-
-struct ggml_tensor_extra_gpu {
-  void* data_device[SYCL_MAX_DEVICES]; // 1 pointer for each device for split
-                                       // tensors
-  dpct::event_ptr events[SYCL_MAX_DEVICES]
-                        [MAX_STREAMS]; // events for synchronizing multiple GPUs
-};
 
 class sycl_gpu_mgr {
  public:
@@ -320,7 +312,7 @@ class sycl_gpu_mgr {
   }
 };
 
-static sycl_gpu_mgr* g_sycl_gpu_mgr = NULL;
+static sycl_gpu_mgr* g_sycl_gpu_mgr = new sycl_gpu_mgr(0);
 static int g_device_count = -1;
 static int g_all_sycl_device_count = -1;
 static int g_main_device = -1;
@@ -329,30 +321,14 @@ static bool g_ggml_backend_sycl_buffer_type_initialized = false;
 
 static std::array<float, SYCL_MAX_DEVICES> g_default_tensor_split = {};
 
-static float g_tensor_split[SYCL_MAX_DEVICES] = {0};
+static float g_tensor_split[GGML_SYCL_MAX_DEVICES] = {0};
 
 static ggml_sycl_backend_gpu_mode g_ggml_sycl_backend_gpu_mode =
     SYCL_UNSET_GPU_MODE;
 
-struct sycl_device_capabilities {
-  int cc; // compute capability
-  bool vmm; // virtual memory support
-  size_t vmm_granularity; // granularity of virtual memory
-  int device_id;
-};
-
-static sycl_device_capabilities g_device_caps[SYCL_MAX_DEVICES] = {
-    {0, false, 0, -1}};
-
-struct sycl_device_id2index {
-  int index;
-};
-
 static void* g_scratch_buffer = nullptr;
 static size_t g_scratch_size = 0; // disabled by default
 static size_t g_scratch_offset = 0;
-
-static dpct::queue_ptr g_sycl_handles[SYCL_MAX_DEVICES] = {nullptr};
 
 int get_main_device();
 
@@ -427,25 +403,151 @@ inline dpct::err0 ggml_sycl_set_device(const int device) try {
   std::exit(1);
 }
 
-void log_ggml_var_device(
-    const char* name,
-    float* src,
-    size_t total_elements,
-    bool src_on_device);
+//////////////////////
 
-void log_ggml_var_device_fp16(
-    const char* name,
-    sycl::half* src,
-    size_t total_elements,
-    bool src_on_device);
+struct ggml_sycl_device_info {
+    int device_count;
 
-// todo: debug for crash in some case
-void print_ggml_tensor(const char* name, struct ggml_tensor* src);
+    struct sycl_device_info {
+        int     cc;                 // compute capability
+        // int     nsm;                // number of streaming multiprocessors
+        // size_t  smpb;               // max. shared memory per block
+        bool    vmm;                // virtual memory support
+        size_t  total_vram;
+    };
 
-static int log_file_name_idx = 0;
-void log_tensor_with_cnt(
-    const char* name,
-    struct ggml_tensor* src,
-    int stop_cnt);
+    sycl_device_info devices[GGML_SYCL_MAX_DEVICES] = {};
+
+    std::array<float, GGML_SYCL_MAX_DEVICES> default_tensor_split = {};
+};
+
+const ggml_sycl_device_info & ggml_sycl_info();
+
+struct ggml_sycl_pool {
+    virtual ~ggml_sycl_pool() = default;
+
+    virtual void * alloc(size_t size, size_t * actual_size) = 0;
+    virtual void free(void * ptr, size_t size) = 0;
+};
+
+template<typename T>
+struct ggml_sycl_pool_alloc {
+    ggml_sycl_pool * pool = nullptr;
+    T * ptr = nullptr;
+    size_t actual_size = 0;
+
+    explicit ggml_sycl_pool_alloc(ggml_sycl_pool & pool) : pool(&pool) {
+    }
+
+    ggml_sycl_pool_alloc(ggml_sycl_pool & pool, size_t size) : pool(&pool) {
+        alloc(size);
+    }
+
+    ~ggml_sycl_pool_alloc() {
+        if (ptr != nullptr) {
+            pool->free(ptr, actual_size);
+        }
+    }
+
+    // size is in number of elements
+    T * alloc(size_t size) {
+        GGML_ASSERT(pool != nullptr);      
+        GGML_ASSERT(ptr == nullptr);
+        ptr = (T *) pool->alloc(size * sizeof(T), &this->actual_size);
+        return ptr;
+    }
+
+    T * alloc(ggml_sycl_pool & pool, size_t size) {
+        this->pool = &pool;
+        return alloc(size);
+    }
+
+    T * get() {
+        return ptr;
+    }
+
+    ggml_sycl_pool_alloc() = default;
+    ggml_sycl_pool_alloc(const ggml_sycl_pool_alloc &) = delete;
+    ggml_sycl_pool_alloc(ggml_sycl_pool_alloc &&) = delete;
+    ggml_sycl_pool_alloc& operator=(const ggml_sycl_pool_alloc &) = delete;
+    ggml_sycl_pool_alloc& operator=(ggml_sycl_pool_alloc &&) = delete;
+};
+
+// backend interface
+
+struct ggml_tensor_extra_gpu {
+  void* data_device[GGML_SYCL_MAX_DEVICES]; // 1 pointer for each device for split
+                                       // tensors
+  dpct::event_ptr events[GGML_SYCL_MAX_DEVICES]
+                        [GGML_SYCL_MAX_STREAMS]; // events for synchronizing multiple GPUs
+};
+
+struct ggml_backend_sycl_context {
+    int device;
+    std::string name;
+
+    queue_ptr qptrs[GGML_SYCL_MAX_DEVICES][GGML_SYCL_MAX_STREAMS] = { { nullptr } };
+    static sycl::handler * sycl_handles[GGML_SYCL_MAX_DEVICES] = {nullptr};
+
+    explicit ggml_backend_sycl_context(int device) :
+        device(device),
+        name(GGML_SYCL_NAME + std::to_string(device)) {
+    }
+
+    ~ggml_backend_sycl_context() {
+        for (int i = 0; i < GGML_SYCL_MAX_DEVICES; ++i) {
+            for (int j = 0; j < GGML_SYCL_MAX_STREAMS; ++j) {
+                if (qptrs[i][j] != nullptr) {
+                    SYCL_CHECK(free(qptrs[i][j]));
+                }
+            }
+            if (cublas_handles[i] != nullptr) {
+                SYCL_CHECK(free(sycl_handles[i]));
+            }
+        }
+    }
+
+    queue_ptr stream(int device, int stream) {
+        if (qptrs[device][stream] == nullptr) {
+            SYCL_CHECK(dpct::get_current_device().create_queue(
+                        g_sycl_gpu_mgr->get_co_ctx(), dpct::get_current_device())));
+        }
+        return qptrs[device][stream];
+    }
+
+    queue_ptr stream() {
+        return stream(device, 0);
+    }
+
+    handle_ptr sycl_handle(int device) {
+        if (sycl_handles[device] == nullptr) {
+            const dpct::queue_ptr stream = qptrs[device][0];
+            // create sycl handle
+            SYCL_CHECK(CHECK_TRY_ERROR(sycl_handles[device] = stream));
+        }
+        return sycl_handles[device];
+    }
+
+    handle_ptr sycl_handle() {
+        return sycl_handle(device);
+    }
+
+    // pool
+    std::unique_ptr<ggml_sycl_pool> pools[GGML_SYCL_MAX_DEVICES];
+
+    static std::unique_ptr<ggml_sycl_pool> new_pool_for_device(queue_ptr qptr, int device);
+
+    ggml_sycl_pool & pool(int device) {
+        if (pools[device] == nullptr) {
+            pools[device] = new_pool_for_device(qptrs[device][0], device);
+        }
+        return *pools[device];
+    }
+
+    ggml_sycl_pool & pool() {
+        return pool(device);
+    }
+};
+
 
 #endif // GGML_SYCL_COMMON_HPP

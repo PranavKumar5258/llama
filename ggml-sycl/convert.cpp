@@ -1,6 +1,6 @@
 #include "convert.hpp"
 #include "dequantize.hpp"
-
+#include "presets.hpp"
 
 template <int qk, int qr, dequantize_kernel_t dequantize_kernel, typename dst_t>
 static void dequantize_block(const void * __restrict__ vx, dst_t * __restrict__ y, const int k,

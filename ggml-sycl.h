@@ -36,8 +36,6 @@ GGML_API GGML_CALL int ggml_backend_sycl_get_device_index(int device_id);
 // TODO: these are temporary
 //       ref: https://github.com/ggerganov/llama.cpp/pull/6022#issuecomment-1992615670
 GGML_API GGML_CALL int ggml_backend_sycl_get_device_id(int device_index);
-GGML_API GGML_CALL void ggml_backend_sycl_set_single_device_mode(int main_gpu_id);
-GGML_API GGML_CALL void ggml_backend_sycl_set_mul_device_mode();
 
 // SYCL doesn't support registering host memory, keep here for reference
 // GGML_API GGML_CALL bool ggml_backend_sycl_register_host_buffer(void * buffer, size_t size);

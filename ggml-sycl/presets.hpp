@@ -14,6 +14,7 @@
 #define GGML_SYCL_PRESETS_HPP
 
 #define GGML_SYCL_MAX_DEVICES       48
+#define GGML_SYCL_MAX_STREAMS 8
 #define GGML_SYCL_NAME "SYCL"
 
 #define WARP_SIZE 32

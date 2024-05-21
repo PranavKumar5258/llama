@@ -1,7 +1,7 @@
 #include "convert.hpp"
 #include "dmmv.hpp"
 #include "dequantize.hpp"
-#include "pool.hpp"
+#include "presets.hpp"
 
 static void convert_f16(const void * vx, const int ib, const int iqs, dfloat2 & v){
     const sycl::half *x = (const sycl::half *)vx;
@@ -967,10 +967,35 @@ void ggml_sycl_op_dequantize_mul_mat_vec(
                 break;
             }
     GGML_ASSERT(src1->type == GGML_TYPE_F32);
-
+            switch (src0->type)
+            {
+            case GGML_TYPE_F32:
+                printf("f32\n");
+                break;
+            case GGML_TYPE_Q4_0:
+                printf("q4_0\n");
+                break;
+            case GGML_TYPE_F16:
+                printf("f16\n");
+                break;
+            case GGML_TYPE_Q4_1:
+                printf("q4_1\n");
+                break;
+            case GGML_TYPE_Q5_0:
+                printf("q5_0\n");
+                break;
+            case GGML_TYPE_Q5_1:
+                printf("q5_1\n");
+                break;
+            case GGML_TYPE_Q5_K:
+                printf("q5_K\n");
+                break;
+            default:
+                break;
+            }
     // on some GPUs it is faster to convert src1 to half and to use half precision intrinsics
 #ifdef GGML_SYCL_F16
-    sycl_pool_alloc<sycl::half> src1_dfloat_a;
+    ggml_sycl_pool_alloc<sycl::half> src1_dfloat_a;
     sycl::half *src1_dfloat = nullptr; // dfloat == half
 
     bool src1_convert_f16 =
@@ -987,7 +1012,32 @@ void ggml_sycl_op_dequantize_mul_mat_vec(
 #else
     const dfloat * src1_dfloat = (const dfloat *) src1_ddf_i; // dfloat == float, no conversion
 #endif // GGML_SYCL_F16
-
+            switch (src0->type)
+            {
+            case GGML_TYPE_F32:
+                printf("f32\n");
+                break;
+            case GGML_TYPE_Q4_0:
+                printf("q4_0\n");
+                break;
+            case GGML_TYPE_F16:
+                printf("f16\n");
+                break;
+            case GGML_TYPE_Q4_1:
+                printf("q4_1\n");
+                break;
+            case GGML_TYPE_Q5_0:
+                printf("q5_0\n");
+                break;
+            case GGML_TYPE_Q5_1:
+                printf("q5_1\n");
+                break;
+            case GGML_TYPE_Q5_K:
+                printf("q5_K\n");
+                break;
+            default:
+                break;
+            }
     switch (src0->type) {
         case GGML_TYPE_Q4_0:
             dequantize_mul_mat_vec_q4_0_sycl(src0_dd_i, src1_dfloat, dst_dd_i, ne00, row_diff, stream);
