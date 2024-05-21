@@ -6,17 +6,15 @@ from typing import Any
 #
 # constants
 #
-
 GGUF_MAGIC             = 0x46554747  # "GGUF"
 GGUF_VERSION           = 3
 GGUF_DEFAULT_ALIGNMENT = 32
 GGML_QUANT_VERSION     = 2  # GGML_QNT_VERSION from ggml.h
 
+
 #
 # metadata keys
 #
-
-
 class Keys:
     class General:
         ARCHITECTURE         = "general.architecture"
@@ -71,11 +69,13 @@ class Keys:
         TIME_STEP_RANK = "{arch}.ssm.time_step_rank"
 
     class Tokenizer:
-        MODEL            = "tokenizer.ggml.model"
-        PRE              = "tokenizer.ggml.pre"
+        MODEL            = "tokenizer.ggml.model"             # Model arch, e.g. llama
+        TYPE             = "tokenizer.ggml.type"              # BPE, SPM, WPM, etc.
+        PRE              = "tokenizer.ggml.pre"               # Pre-tokenizer reg-ex
+        HASH             = "tokenizer.ggml.hash"              # Merged vocab hash sum
         LIST             = "tokenizer.ggml.tokens"
         TOKEN_TYPE       = "tokenizer.ggml.token_type"
-        TOKEN_TYPE_COUNT = "tokenizer.ggml.token_type_count"  # for BERT-style token types
+        TOKEN_TYPE_COUNT = "tokenizer.ggml.token_type_count"  # BERT token types
         SCORES           = "tokenizer.ggml.scores"
         MERGES           = "tokenizer.ggml.merges"
         BOS_ID           = "tokenizer.ggml.bos_token_id"
@@ -762,11 +762,10 @@ MODEL_TENSOR_SKIP: dict[MODEL_ARCH, list[MODEL_TENSOR]] = {
     ],
 }
 
+
 #
 # types
 #
-
-
 class TokenType(IntEnum):
     NORMAL       = 1
     UNKNOWN      = 2
@@ -936,6 +935,83 @@ GGML_QUANT_SIZES: dict[GGMLQuantizationType, tuple[int, int]] = {
 }
 
 
+#
+# LLaMa Tokenizer Types
+#
+class LLaMaVocabType(IntEnum):
+    NON = auto()  # For models without vocab
+    SPM = auto()  # SentencePiece LLaMa tokenizer
+    BPE = auto()  # BytePair GPT-2 tokenizer
+    WPM = auto()  # WordPiece BERT tokenizer
+
+
+#
+# LLaMa Model Types
+#
+class LLaMaModelType(IntEnum):
+    UNK = auto()  # Unsupported file type
+    PTH = auto()  # PyTorch file type
+    SFT = auto()  # SafeTensor file type
+
+
+# NOTE: Tokenizers defaults to OpenAI GPT-2 Byte Level Reg-Exp
+# The pattern uses perl, is grammatical, and splits are technically arbitrary.
+# https://github.com/openai/gpt-2/blob/master/src/encoder.py#L53
+# https://github.com/huggingface/tokenizers/blob/main/tokenizers/src/pre_tokenizers/byte_level.rs#L40-L42
+LLAMA_TOKENIZER_DEFAULT_PRE = "'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^\\s\\p{L}\\p{N}]+|\\s+(?!\\S)|\\s+"
+
+#
+# HuggingFace Model Map
+#
+# NOTE:
+#   - Repository paths are required
+#   - Allow the user to specify the tokenizer model type themselves
+#   - Use architecture types because they are explicitly defined
+#   - Possible algorithms are WordLevel, BPE, WordPiece, or Unigram
+#   - Possible LLaMa tokenizer model types are: None, SPM, BPE, or WPM
+HF_MODEL_MAP = (
+    {
+        "model_repo": "meta-llama/Llama-2-7b-hf",
+        "model_arch": MODEL_ARCH.LLAMA,
+        "model_parts": 2,
+        "model_type": LLaMaModelType.SFT,
+        "vocab_type": LLaMaVocabType.SPM,
+        "vocab_pre": [],
+        "vocab_files": [],
+    },
+    {
+        "repo": "meta-llama/Meta-Llama-3-8B",
+        "model_arch": MODEL_ARCH.LLAMA,
+        "model_parts": 4,
+        "model_type": LLaMaModelType.SFT,
+        "vocab_type": LLaMaVocabType.BPE,
+        "vocab_pre": [
+            "(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+"
+        ],
+        "vocab_files": [],
+    },
+    {"model_arch": MODEL_ARCH.PHI3, "vocab_type": LLaMaVocabType.SPM, "repo": "microsoft/Phi-3-mini-4k-instruct", },
+    {"model_arch": MODEL_ARCH.LLAMA, "vocab_type": LLaMaVocabType.BPE, "repo": "deepseek-ai/deepseek-llm-7b-base", },
+    {"model_arch": MODEL_ARCH.LLAMA, "vocab_type": LLaMaVocabType.BPE, "repo": "deepseek-ai/deepseek-coder-6.7b-base", },
+    {"model_arch": MODEL_ARCH.FALCON, "vocab_type": LLaMaVocabType.BPE, "repo": "tiiuae/falcon-7b", },
+    {"model_arch": MODEL_ARCH.BERT, "vocab_type": LLaMaVocabType.WPM, "repo": "BAAI/bge-small-en-v1.5", },
+    {"model_arch": MODEL_ARCH.MPT, "vocab_type": LLaMaVocabType.BPE, "repo": "mosaicml/mpt-7b", },
+    {"model_arch": MODEL_ARCH.STARCODER2, "vocab_type": LLaMaVocabType.BPE, "repo": "bigcode/starcoder2-3b", },
+    {"model_arch": MODEL_ARCH.GPT2, "vocab_type": LLaMaVocabType.BPE, "repo": "openai-community/gpt2", },
+    {"model_arch": MODEL_ARCH.REFACT, "vocab_type": LLaMaVocabType.BPE, "repo": "smallcloudai/Refact-1_6-base", },
+    {"model_arch": MODEL_ARCH.COMMAND_R, "vocab_type": LLaMaVocabType.BPE, "repo": "CohereForAI/c4ai-command-r-v01", },
+    {"model_arch": MODEL_ARCH.QWEN2, "vocab_type": LLaMaVocabType.BPE, "repo": "Qwen/Qwen1.5-7B", },
+    {"model_arch": MODEL_ARCH.OLMO, "vocab_type": LLaMaVocabType.BPE, "repo": "allenai/OLMo-1.7-7B-hf", },
+    {"model_arch": MODEL_ARCH.DBRX, "vocab_type": LLaMaVocabType.BPE, "repo": "databricks/dbrx-base", },
+    {"model_arch": MODEL_ARCH.JINA_BERT_V2, "vocab_type": LLaMaVocabType.WPM, "repo": "jinaai/jina-embeddings-v2-base-en", },
+    {"model_arch": MODEL_ARCH.JINA_BERT_V2, "vocab_type": LLaMaVocabType.BPE, "repo": "jinaai/jina-embeddings-v2-base-es", },
+    {"model_arch": MODEL_ARCH.JINA_BERT_V2, "vocab_type": LLaMaVocabType.BPE, "repo": "jinaai/jina-embeddings-v2-base-de", },
+    {"model_arch": MODEL_ARCH.PHI2, "vocab_type": LLaMaVocabType.BPE, "repo": "microsoft/phi-1", },
+    {"model_arch": MODEL_ARCH.STABLELM, "vocab_type": LLaMaVocabType.BPE, "repo": "stabilityai/stablelm-2-zephyr-1_6b", },
+    {"model_arch": MODEL_ARCH.LLAMA, "vocab_type": LLaMaVocabType.SPM, "repo": "mistralai/Mistral-7B-Instruct-v0.2", },
+    {"model_arch": MODEL_ARCH.LLAMA, "vocab_type": LLaMaVocabType.SPM, "repo": "mistralai/Mixtral-8x7B-Instruct-v0.1", },
+)
+
 # Aliases for backward compatibility.
 
 # general
@@ -984,7 +1060,9 @@ KEY_SSM_TIME_STEP_RANK = Keys.SSM.TIME_STEP_RANK
 
 # tokenization
 KEY_TOKENIZER_MODEL      = Keys.Tokenizer.MODEL
+KEY_TOKENIZER_TYPE       = Keys.Tokenizer.TYPE
 KEY_TOKENIZER_PRE        = Keys.Tokenizer.PRE
+KEY_TOKENIZER_HASH       = Keys.Tokenizer.HASH
 KEY_TOKENIZER_LIST       = Keys.Tokenizer.LIST
 KEY_TOKENIZER_TOKEN_TYPE = Keys.Tokenizer.TOKEN_TYPE
 KEY_TOKENIZER_SCORES     = Keys.Tokenizer.SCORES
