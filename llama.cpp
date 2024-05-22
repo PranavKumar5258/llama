@@ -3671,10 +3671,8 @@ struct llama_model_loader {
     void init_mappings(bool prefetch = true, llama_mlocks * mlock_mmaps = nullptr, bool anonymous = false) {
         if (use_mmap) {
             mappings.reserve(files.size());
-            mmaps_used.reserve(files.size());
             for (const auto & file : files) {
                 std::unique_ptr<llama_mmap> mapping(anonymous ? new llama_anonymous_mmap(file.get()) :  new llama_mmap(file.get(), prefetch ? -1 : 0, ggml_is_numa()));
-                mmaps_used.emplace_back(mapping->size, 0);
                 if (mlock_mmaps) {
                     std::unique_ptr<llama_mlock> mlock_mmap(new llama_mlock());
                     mlock_mmap->init(mapping->addr);
@@ -3690,13 +3688,10 @@ struct llama_model_loader {
         }
     }
 
-    void get_mapping_range(size_t * first, size_t * last, void ** addr, int idx, ggml_context * ctx) const {
+    std::vector<std::pair<size_t, size_t>> get_mapping_ranges(int idx, ggml_context * ctx) const {
         GGML_ASSERT(!mappings.empty());
-        const auto & mapping = mappings.at(idx);
 
-        *first = mapping->size;
-        *last  = 0;
-        *addr = mapping->addr;
+        std::vector<std::pair<size_t, size_t>> sorted;
         for (ggml_tensor * tensor = ggml_get_first_tensor(ctx); tensor; tensor = ggml_get_next_tensor(ctx, tensor)) {
             try {
                 const auto * weight = get_weight(ggml_get_name(tensor));
@@ -3706,12 +3701,37 @@ struct llama_model_loader {
                 if (weight->idx != idx) {
                     continue;
                 }
-                *first = std::min(*first, weight->offs);
-                *last  = std::max(*last,  weight->offs + ggml_nbytes(tensor));
+                sorted.emplace_back(weight->offs, weight->offs + ggml_nbytes(tensor));
             } catch(...) {
                 // the tensor is not in the model
             }
         }
+
+        std::sort(sorted.begin(), sorted.end(), [](std::pair<size_t, size_t> a, std::pair<size_t, size_t> b) { return a.first < b.first; });
+
+        std::vector<std::pair<size_t, size_t>> merged;
+        for (auto range : sorted) {
+            if (!merged.empty() && merged.back().second == range.first) {
+                auto last = merged.back();
+                merged.pop_back();
+                merged.emplace_back(last.first, range.second);
+            } else {
+                merged.emplace_back(range.first, range.second);
+            }
+        }
+
+        return merged;
+    }
+
+    void get_mapping_range(size_t * first, size_t * last, void ** addr, int idx, ggml_context * ctx) const {
+        GGML_ASSERT(!mappings.empty());
+
+        *addr = mappings.at(idx)->addr;
+
+        auto ranges = get_mapping_ranges(idx, ctx);
+        GGML_ASSERT(!ranges.empty());
+        *first = ranges.front().first;
+        *last = ranges.back().second;
     }
 
     // for backwards compatibility, does not support ggml-backend
@@ -3740,7 +3760,6 @@ struct llama_model_loader {
 
     size_t size_done = 0;
     size_t size_data = 0;
-    std::vector<std::pair<size_t, size_t>> mmaps_used;
 
     // Returns false if cancelled by progress_callback
     bool load_all_data(
@@ -3753,10 +3772,9 @@ struct llama_model_loader {
 
         if (use_mmap) {
             for (uint32_t idx = 0; idx < files.size(); idx++) {
-                void * addr = nullptr;
-                size_t first, last;
-                get_mapping_range(&first, &last, &addr, idx, ctx);
-                mappings.at(idx)->populate(first, last);
+                for (auto range : get_mapping_ranges(idx, ctx)) {
+                    mappings.at(idx)->populate(range.first, range.second);
+                }
             }
         }
 
@@ -3799,12 +3817,9 @@ struct llama_model_loader {
                         const auto & lmlock = lmlocks->at(weight->idx);
                         lmlock->grow_to(weight->offs + n_size);
                     }
-
-                    auto & mmap_used = mmaps_used[weight->idx];
-                    mmap_used.first  = std::min(mmap_used.first,  weight->offs);
-                    mmap_used.second = std::max(mmap_used.second, weight->offs + n_size);
                 } else {
                     ggml_backend_tensor_set(cur, data, 0, n_size);
+                    mappings.at(weight->idx)->unmap_fragment(weight->offs, weight->offs + n_size);
                 }
             } else {
                 GGML_ASSERT(weight->idx < files.size());
@@ -3844,19 +3859,7 @@ struct llama_model_loader {
             throw std::runtime_error("found tensors with invalid data");
         }
 
-        // check if this is the last call and do final cleanup
         if (size_done >= size_data) {
-            // unmap offloaded tensors and metadata
-            if (use_mmap) {
-                for (uint32_t idx = 0; idx < mappings.size(); idx++) {
-                    const auto & mmap_used = mmaps_used.at(idx);
-                    auto & mapping = mappings.at(idx);
-                    mapping->unmap_fragment(0, mmap_used.first);
-                    if (mmap_used.second != 0) {
-                        mapping->unmap_fragment(mmap_used.second, mapping->size);
-                    }
-                }
-            }
             if (progress_callback) {
                 // Even though the model is done loading, we still honor
                 // cancellation since we need to free allocations.
