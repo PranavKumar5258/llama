@@ -79,7 +79,6 @@ static int g_work_group_size = 0;
 #endif
 
 typedef sycl::queue *queue_ptr;
-typedef sycl::handler *handle_ptr;
 
 enum ggml_sycl_backend_gpu_mode {
   SYCL_UNSET_GPU_MODE = -1,
@@ -313,13 +312,12 @@ class sycl_gpu_mgr {
 };
 
 static sycl_gpu_mgr* g_sycl_gpu_mgr = new sycl_gpu_mgr(0);
-static int g_device_count = -1;
 static int g_all_sycl_device_count = -1;
 static int g_main_device = -1;
 static int g_main_device_id = -1;
 static bool g_ggml_backend_sycl_buffer_type_initialized = false;
 
-static std::array<float, SYCL_MAX_DEVICES> g_default_tensor_split = {};
+static std::array<float, GGML_SYCL_MAX_DEVICES> g_default_tensor_split = {};
 
 static float g_tensor_split[GGML_SYCL_MAX_DEVICES] = {0};
 
@@ -339,25 +337,6 @@ int get_main_device();
   std::exit(1);
 
   (void)bad_arch; // suppress unused function warning
-}
-
-/*
-device_index: device index from 0 to n (continue numbers).
-    It is used for device select/set in SYCL backend internal data structure.
-*/
-inline void check_allow_gpu_index(const int device_index) {
-  if (device_index >= g_device_count) {
-    char error_buf[256];
-    snprintf(
-        error_buf,
-        sizeof(error_buf),
-        "%s error: device_index:%d is out of range: [0-%d]",
-        __func__,
-        device_index,
-        g_device_count - 1);
-    fprintf(stderr, "%s\n", error_buf);
-    assert(false);
-  }
 }
 
 /*
@@ -487,49 +466,22 @@ struct ggml_backend_sycl_context {
     std::string name;
 
     queue_ptr qptrs[GGML_SYCL_MAX_DEVICES][GGML_SYCL_MAX_STREAMS] = { { nullptr } };
-    static sycl::handler * sycl_handles[GGML_SYCL_MAX_DEVICES] = {nullptr};
 
     explicit ggml_backend_sycl_context(int device) :
         device(device),
         name(GGML_SYCL_NAME + std::to_string(device)) {
     }
 
-    ~ggml_backend_sycl_context() {
-        for (int i = 0; i < GGML_SYCL_MAX_DEVICES; ++i) {
-            for (int j = 0; j < GGML_SYCL_MAX_STREAMS; ++j) {
-                if (qptrs[i][j] != nullptr) {
-                    SYCL_CHECK(free(qptrs[i][j]));
-                }
-            }
-            if (cublas_handles[i] != nullptr) {
-                SYCL_CHECK(free(sycl_handles[i]));
-            }
-        }
-    }
-
     queue_ptr stream(int device, int stream) {
         if (qptrs[device][stream] == nullptr) {
-            SYCL_CHECK(dpct::get_current_device().create_queue(
-                        g_sycl_gpu_mgr->get_co_ctx(), dpct::get_current_device())));
+            qptrs[device][stream] = (dpct::get_current_device().create_queue(
+                        g_sycl_gpu_mgr->get_co_ctx(), dpct::get_current_device()));
         }
         return qptrs[device][stream];
     }
 
     queue_ptr stream() {
         return stream(device, 0);
-    }
-
-    handle_ptr sycl_handle(int device) {
-        if (sycl_handles[device] == nullptr) {
-            const dpct::queue_ptr stream = qptrs[device][0];
-            // create sycl handle
-            SYCL_CHECK(CHECK_TRY_ERROR(sycl_handles[device] = stream));
-        }
-        return sycl_handles[device];
-    }
-
-    handle_ptr sycl_handle() {
-        return sycl_handle(device);
     }
 
     // pool
@@ -539,7 +491,7 @@ struct ggml_backend_sycl_context {
 
     ggml_sycl_pool & pool(int device) {
         if (pools[device] == nullptr) {
-            pools[device] = new_pool_for_device(qptrs[device][0], device);
+            pools[device] = new_pool_for_device(stream(device,0), device);
         }
         return *pools[device];
     }
