@@ -19669,6 +19669,7 @@ static void set_numa_thread_affinity(int thread_n) { UNUSED(thread_n);  }
 static void clear_numa_thread_affinity(void) {}
 #endif
 
+
 static void ggml_graph_compute_perf_stats_node(struct ggml_tensor * node, const struct ggml_compute_state_shared * st) {
     int64_t cycles_cur  = ggml_perf_cycles()  - st->perf_node_start_cycles;
     int64_t time_us_cur = ggml_perf_time_us() - st->perf_node_start_time_us;
@@ -22231,8 +22232,8 @@ struct gguf_header {
 struct gguf_tensor_info {
     struct gguf_str name;
 
-    uint32_t n_dims;
     uint64_t ne[GGML_MAX_DIMS];
+    uint32_t n_dims;
 
     enum ggml_type type;
 
