@@ -1374,6 +1374,7 @@ using llama_files = std::vector<std::unique_ptr<llama_file>>;
 struct llama_mmap {
     void * addr;
     size_t size;
+    bool prefetch;
 
     llama_mmap(const llama_mmap &) = delete;
 
@@ -1402,6 +1403,7 @@ struct llama_mmap {
 
     llama_mmap(struct llama_file * file, size_t prefetch = (size_t) -1 /* -1 = max value */, bool numa = false) {
         size = file->size;
+        this->prefetch = prefetch > 0;
         int fd = fileno(file->fp);
         int flags = MAP_SHARED;
         // prefetch/readahead impairs performance on NUMA systems
@@ -1503,6 +1505,7 @@ struct llama_mmap {
         GGML_UNUSED(numa);
 
         size = file->size;
+        this->prefetch = prefetch > 0;
 
         HANDLE hFile = (HANDLE) _get_osfhandle(_fileno(file->fp));
 
@@ -1592,9 +1595,10 @@ struct llama_anonymous_mmap : llama_mmap {
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
 #endif
-    llama_anonymous_mmap(struct llama_file * file) {
+    llama_anonymous_mmap(struct llama_file * file, bool prefetch) {
         this->file = file;
         size = file->size;
+        this->prefetch = prefetch;
         addr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
         if (addr == MAP_FAILED) { // NOLINT
             throw std::runtime_error(format("mmap(.., MAP_ANONYMOUS) failed: %s", strerror(errno)));
@@ -1620,9 +1624,10 @@ struct llama_anonymous_mmap : llama_mmap {
         }
     }
 #elif defined(_WIN32)
-    llama_anonymous_mmap(struct llama_file * file) {
+    llama_anonymous_mmap(struct llama_file * file, bool prefetch) {
         this->file = file;
         size = file->size;
+        this->prefetch = prefetch;
 
         HANDLE hMapping = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, size >> 32, size, NULL);
         if (hMapping == NULL) {
@@ -3699,7 +3704,7 @@ struct llama_model_loader {
         if (use_mmap) {
             mappings.reserve(files.size());
             for (const auto & file : files) {
-                std::unique_ptr<llama_mmap> mapping(anonymous ? new llama_anonymous_mmap(file.get()) :  new llama_mmap(file.get(), prefetch ? -1 : 0, ggml_is_numa()));
+                std::unique_ptr<llama_mmap> mapping(anonymous ? new llama_anonymous_mmap(file.get(), prefetch) :  new llama_mmap(file.get(), prefetch ? -1 : 0, ggml_is_numa()));
                 if (mlock_mmaps) {
                     std::unique_ptr<llama_mlock> mlock_mmap(new llama_mlock());
                     mlock_mmap->init(mapping->addr);
@@ -3799,8 +3804,11 @@ struct llama_model_loader {
 
         if (use_mmap) {
             for (uint32_t idx = 0; idx < files.size(); idx++) {
-                for (auto range : get_mapping_ranges(idx, ctx)) {
-                    mappings.at(idx)->populate(range.first, range.second);
+                const auto & mapping = mappings.at(idx);
+                if (mapping->prefetch) {
+                    for (auto range : get_mapping_ranges(idx, ctx)) {
+                        mapping->populate(range.first, range.second);
+                    }
                 }
             }
         }
@@ -3838,6 +3846,9 @@ struct llama_model_loader {
                 }
 
                 GGML_ASSERT(buf_mmap || cur->data); // either we have a buffer to allocate the tensor in, or it is already allocated
+                if (!mapping->prefetch) {
+                    mapping->populate(weight->offs, weight->offs + n_size);
+                }
                 if (buf_mmap && cur->data == nullptr) {
                     ggml_backend_tensor_alloc(buf_mmap, cur, data);
                     if (lmlocks) {
@@ -3846,7 +3857,7 @@ struct llama_model_loader {
                     }
                 } else {
                     ggml_backend_tensor_set(cur, data, 0, n_size);
-                    mappings.at(weight->idx)->unmap_fragment(weight->offs, weight->offs + n_size);
+                    mapping->unmap_fragment(weight->offs, weight->offs + n_size);
                 }
             } else {
                 GGML_ASSERT(weight->idx < files.size());
