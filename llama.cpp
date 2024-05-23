@@ -1653,27 +1653,31 @@ struct llama_anonymous_mmap : llama_mmap {
         }
     }
 
-#if _WIN32_WINNT >= 0x603
     void unmap_fragment(size_t first, size_t last) override {
+        SYSTEM_INFO siSysInfo;
+        GetSystemInfo(&siSysInfo);
+        DWORD dwPageSize = siSysInfo.dwPageSize;
+
+        align_to_next_page(&first, dwPageSize);
+        align_to_previous_page(&last, dwPageSize);
+
+#if _WIN32_WINNT >= 0x603
         DWORD (WINAPI *pOfferVirtualMemory) (PVOID, SIZE_T, DWORD);
         HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
 
         pOfferVirtualMemory = reinterpret_cast<decltype(pOfferVirtualMemory)> (GetProcAddress(hKernel32, "OfferVirtualMemory"));
 
         if (pOfferVirtualMemory) {
-            SYSTEM_INFO siSysInfo;
-            GetSystemInfo(&siSysInfo);
-            DWORD dwPageSize = siSysInfo.dwPageSize;
-
-            align_to_next_page(&first, dwPageSize);
-            align_to_previous_page(&last, dwPageSize);
-
             if (pOfferVirtualMemory((char *) addr + first, last - first, 0x00000004 /* VMOfferPriorityNormal */)) {
                 LLAMA_LOG_WARN("warning: OfferVirtualMemory failed: %s\n", llama_format_win_err(GetLastError()).c_str());
             }
         }
-    }
+#else
+        if (VirtualAlloc((char *) addr + first, last - first, MEM_RESET, PAGE_NOACCESS)) {
+            LLAMA_LOG_WARN("warning: VirtualAlloc(.., MEM_RESET) failed: %s\n", llama_format_win_err(GetLastError()).c_str());
+        }
 #endif
+    }
 
 #else
     llama_anonymous_mmap(struct llama_file * file) {
