@@ -1243,6 +1243,10 @@ class MixMul {
         assert(params->ith < params->nth);
         assert(plan->type == GGML_TYPE_I32);
 
+        // doesn't help for token generation
+        if (n < 2)
+            return false;
+
         // supported types
         if (result->type != GGML_TYPE_F32)
             return false;
