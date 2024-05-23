@@ -3340,13 +3340,6 @@ static void ggml_qnn_rope(const ggml_tensor * src0, const ggml_tensor * src1, gg
 }
 
 
-static void ggml_qnn_alibi(const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
-    QNN_LOG_DEBUG("call %s\n", __func__);
-
-    QNN_LOG_DEBUG("call %s done\n", __func__);
-}
-
-
 static void ggml_qnn_pool2d(const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
     QNN_LOG_DEBUG("call %s\n", __func__);
 
@@ -3540,9 +3533,6 @@ bool ggml_qnn_compute_forward(struct ggml_compute_params * params, struct ggml_t
             break;
         case GGML_OP_ROPE:
             func = ggml_qnn_rope;
-            break;
-        case GGML_OP_ALIBI:
-            func = ggml_qnn_alibi;
             break;
         case GGML_OP_IM2COL:
             func = ggml_qnn_im2col;
@@ -4276,10 +4266,6 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads, int n_cur_
             n_tasks = n_threads;
         }
             break;
-        case GGML_OP_ALIBI: {
-            n_tasks = 1;
-        }
-            break;
         case GGML_OP_CLAMP: {
             n_tasks = 1;
         }
@@ -4325,13 +4311,8 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads, int n_cur_
             n_tasks = n_threads;
         }
             break;
-        case GGML_OP_FLASH_ATTN: {
+        case GGML_OP_FLASH_ATTN_EXT:
             n_tasks = n_threads;
-        }
-            break;
-        case GGML_OP_FLASH_FF: {
-            n_tasks = n_threads;
-        }
             break;
         case GGML_OP_FLASH_ATTN_BACK: {
             n_tasks = n_threads;
