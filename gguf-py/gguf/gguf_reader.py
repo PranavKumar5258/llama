@@ -154,6 +154,10 @@ class GGUFReader:
         slen = self._get(offset, np.uint64)
         return slen, self._get(offset + 8, np.uint8, slen[0])
 
+    def _get_obj(self, offset: int) -> tuple[npt.NDArray[np.uint64], npt.NDArray[np.uint8]]:
+        olen = self._get(offset, np.uint64)
+        return olen, self._get(offset + 8, np.uint8, olen[0])
+
     def _get_field_parts(
         self, orig_offs: int, raw_type: int,
     ) -> tuple[int, list[npt.NDArray[Any]], list[int], list[GGUFValueType]]:
@@ -166,6 +170,15 @@ class GGUFReader:
             sparts: list[npt.NDArray[Any]] = list(self._get_str(offs))
             size = sum(int(part.nbytes) for part in sparts)
             return size, sparts, [1], types
+        # Handle namedobjects.
+        if gtype == GGUFValueType.NAMEDOBJECT:
+            nparts: list[npt.NDArray[Any]] = list(self._get_str(offs))
+            nsize = sum(int(part.nbytes) for part in nparts)
+            oparts: list[npt.NDArray[Any]] = list(self._get_obj(offs + nsize))
+            osize = sum(int(part.nbytes) for part in oparts)
+            nosize = nsize + osize
+            noparts: list[npt.NDArray[Any]] = list((nparts[0],nparts[1],oparts[0],oparts[1]))
+            return nosize, noparts, [4], types
         # Check if it's a simple scalar type.
         nptype = self.gguf_scalar_to_np.get(gtype)
         if nptype is not None:

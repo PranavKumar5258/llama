@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import Enum, IntEnum, auto
 from typing import Any
+from dataclasses import dataclass
 
 #
 # constants
@@ -12,6 +13,15 @@ GGUF_VERSION           = 3
 GGUF_DEFAULT_ALIGNMENT = 32
 GGML_QUANT_VERSION     = 2  # GGML_QNT_VERSION from ggml.h
 
+#
+# datatype
+#
+
+@dataclass
+class NamedObject:
+    name: str
+    obj: bytes[Any]
+ 
 #
 # metadata keys
 #
@@ -31,6 +41,8 @@ class Keys:
         SOURCE_URL           = "general.source.url"
         SOURCE_HF_REPO       = "general.source.huggingface.repository"
         FILE_TYPE            = "general.file_type"
+        NAMEDOBJECT          = "general.namedobject"
+        CONNECT              = "."
 
     class LLM:
         VOCAB_SIZE            = "{arch}.vocab_size"
@@ -887,11 +899,14 @@ class GGUFValueType(IntEnum):
     UINT64  = 10
     INT64   = 11
     FLOAT64 = 12
+    NAMEDOBJECT = 13
 
     @staticmethod
     def get_type(val: Any) -> GGUFValueType:
         if isinstance(val, (str, bytes, bytearray)):
             return GGUFValueType.STRING
+        elif isinstance(val, (str, bytes, bytearray)):
+            return GGUFValueType.NAMEDOBJECT
         elif isinstance(val, list):
             return GGUFValueType.ARRAY
         elif isinstance(val, float):
