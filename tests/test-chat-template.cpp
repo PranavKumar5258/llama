@@ -50,7 +50,10 @@ int main(void) {
         // Llama-3
         "{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n'+ message['content'] | trim + '<|eot_id|>' %}{% if loop.index0 == 0 %}{% set content = bos_token + content %}{% endif %}{{ content }}{% endfor %}{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}",
         // Phi-3
-        "{{ bos_token }}{% for message in messages %}{{'<|' + message['role'] + '|>' + ' ' + message['content'] + '<|end|> ' }}{% endfor %}{% if add_generation_prompt %}{{ '<|assistant|> ' }}{% else %}{{ eos_token }}{% endif %}"
+        "{{ bos_token }}{% for message in messages %}{{'<|' + message['role'] + '|>' + ' ' + message['content'] + '<|end|> ' }}{% endfor %}{% if add_generation_prompt %}{{ '<|assistant|> ' }}{% else %}{{ eos_token }}{% endif %}",
+        // meta-math/MetaMath-7B-V1.0
+        // No template included in tokenizer_config.json, so this template likely needs to be manually set.
+        "{%- set ns = namespace(found=false) -%} {%- for message in messages -%} {%- if message['role'] == 'system' -%} {%- set ns.found = true -%} {%- endif -%} {%- endfor -%} {%- if not ns.found -%} {{- '' + 'Below is an instruction that describes a task. Write a response that appropriately completes the request.' + '\n\n' -}} {%- endif %} {%- for message in messages %} {%- if message['role'] == 'system' -%} {{- '' + message['content'] + '\n\n' -}} {%- else -%} {%- if message['role'] == 'user' -%} {{-'### Instruction:\n' + message['content'] + '\n\n'-}} {%- else -%} {{-'### Response:\n' + message['content'] + '\n\n' -}} {%- endif -%} {%- endif -%} {%- endfor -%} {%- if add_generation_prompt -%} {{-'### Response:\n'-}} {%- endif -%}"
     };
     std::vector<std::string> expected_output = {
         // teknium/OpenHermes-2.5-Mistral-7B
@@ -81,6 +84,8 @@ int main(void) {
         "<|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nHi there<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWho are you<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nI am an assistant<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nAnother question<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
         // Phi 3
         "<|system|>\nYou are a helpful assistant<|end|>\n<|user|>\nHello<|end|>\n<|assistant|>\nHi there<|end|>\n<|user|>\nWho are you<|end|>\n<|assistant|>\nI am an assistant<|end|>\n<|user|>\nAnother question<|end|>\n<|assistant|>\n",
+        // meta-math/MetaMath-7B-V1.0
+        "You are a helpful assistant\n\n### Instruction:\nHello\n\n### Response:\nHi there\n\n### Instruction:\nWho are you\n\n### Response:\n   I am an assistant   \n\n### Instruction:\nAnother question\n\n### Response:\n",
     };
     std::vector<char> formatted_chat(1024);
     int32_t res;
