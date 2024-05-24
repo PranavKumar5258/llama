@@ -86,6 +86,7 @@ TBD
 
 ## Android
 
+<<<<<<< HEAD
 ### 1. Setup Environment
 
 Any **mainstream** Android phone based on Qualcomm's mobile SoC should be supported by llama.cpp + QNN. Qualcomm SM8650-AB Snapdragon 8 Gen 3 based Android phone is preferred.
@@ -124,6 +125,23 @@ Any **mainstream** Android phone based on Qualcomm's mobile SoC should be suppor
 ### 4. Run the inference on Qualcomm mobile SoC based Android phone
 
 Pls refer to [project kantv](https://github.com/zhouwg/kantv) firstly.
+=======
+### I. Setup Environment
+
+Any **mainstream** Android phone based on Qualcomm's mobile SoC should be supported by llama.cpp + QNN. Qualcomm SM8650-AB Snapdragon 8 Gen 3 based Android phone is preferred.
+
+### II. Build llama.cpp + QNN backend
+
+
+Please refer to [project kantv](https://github.com/zhouwg/kantv) firstly.
+
+
+A small and standalone Android example(or re-use [the existing Android example in llama.cpp](https://github.com/ggerganov/llama.cpp/tree/master/examples/llama.android)) for purpose of facilitate community developers to participate in develop/verify QNN backend.
+
+
+### III. Run the inference on Qualcomm mobile SoC based Android phone
+
+>>>>>>> follow project's style
 
 ![504893116](https://github.com/zhouwg/kantv/assets/6889919/51f0b277-eca4-4938-86f5-415dbf5897e7)
 
