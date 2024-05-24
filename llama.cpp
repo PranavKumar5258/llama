@@ -297,6 +297,7 @@ enum llm_kv {
     LLM_KV_ATTENTION_LAYERNORM_RMS_EPS,
     LLM_KV_ATTENTION_CAUSAL,
 
+    LLM_KV_ROPE_TYPE,
     LLM_KV_ROPE_DIMENSION_COUNT,
     LLM_KV_ROPE_FREQ_BASE,
     LLM_KV_ROPE_SCALE_LINEAR,
@@ -375,6 +376,7 @@ static const std::map<llm_kv, const char *> LLM_KV_NAMES = {
     { LLM_KV_ATTENTION_LAYERNORM_RMS_EPS,   "%s.attention.layer_norm_rms_epsilon" },
     { LLM_KV_ATTENTION_CAUSAL,              "%s.attention.causal"                 },
 
+    { LLM_KV_ROPE_TYPE,                     "%s.rope.type"                            },
     { LLM_KV_ROPE_DIMENSION_COUNT,          "%s.rope.dimension_count"                 },
     { LLM_KV_ROPE_FREQ_BASE,                "%s.rope.freq_base"                       },
     { LLM_KV_ROPE_SCALE_LINEAR,             "%s.rope.scale_linear"                    },
@@ -1129,11 +1131,28 @@ struct LLM_TN {
 // gguf helpers
 //
 
+static const std::map<enum llama_rope_type, const char *> LLAMA_ROPE_TYPES = {
+    { LLAMA_ROPE_TYPE_NONE, "none" },
+    { LLAMA_ROPE_TYPE_NORM, "norm" },
+    { LLAMA_ROPE_TYPE_NEOX, "neox" },
+    { LLAMA_ROPE_TYPE_GLM,  "glm"  },
+};
+
 static const std::map<llama_rope_scaling_type, const char *> LLAMA_ROPE_SCALING_TYPES = {
     { LLAMA_ROPE_SCALING_TYPE_NONE,   "none"   },
     { LLAMA_ROPE_SCALING_TYPE_LINEAR, "linear" },
     { LLAMA_ROPE_SCALING_TYPE_YARN,   "yarn"   },
 };
+
+static enum llama_rope_type llama_rope_type_from_string(const std::string & name) {
+    for (const auto & kv : LLAMA_ROPE_TYPES) {
+        if (kv.second == name) {
+            return (enum llama_rope_type) kv.first;
+        }
+    }
+
+    return LLAMA_ROPE_TYPE_NONE;
+}
 
 static llama_rope_scaling_type llama_rope_scaling_type_from_string(const std::string & name) {
     for (const auto & kv : LLAMA_ROPE_SCALING_TYPES) {
@@ -4394,7 +4413,15 @@ static void llm_load_hparams(
         hparams.use_alibi = true;
     }
 
-    hparams.rope_type = llama_rope_type(&model);
+    hparams.rope_type = llama_default_rope_type(&model);
+
+    const auto kv = LLM_KV(model.arch);
+    const int rope_type_keyidx = gguf_find_key(ctx, kv(LLM_KV_ROPE_TYPE).c_str());
+    if (rope_type_keyidx != -1) {
+        std::string rope_type("none");
+        ml.get_key(LLM_KV_ROPE_TYPE, rope_type);
+        hparams.rope_type =  llama_rope_type_from_string(rope_type);
+    }
 }
 
 // TODO: This should probably be in llama.h
@@ -16216,7 +16243,7 @@ enum llama_vocab_type llama_vocab_type(const struct llama_model * model) {
     return model->vocab.type;
 }
 
-enum llama_rope_type llama_rope_type(const struct llama_model * model) {
+enum llama_rope_type llama_default_rope_type(const struct llama_model * model) {
     switch (model->arch) {
         // these models do not use RoPE
         case LLM_ARCH_GPT2:
