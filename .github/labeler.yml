@@ -1,5 +1,12 @@
 # https://github.com/actions/labeler
 
+Qualcomm QNN:
+    - changed-files:
+        - any-glob-to-any-file:
+            - ggml-qnn.h
+            - ggml-qnn.cpp
+            - README-qnn.md
+            - tests/ggml-qnn/*
 SYCL:
     - changed-files:
         - any-glob-to-any-file:
