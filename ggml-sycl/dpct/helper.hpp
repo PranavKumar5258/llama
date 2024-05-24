@@ -935,6 +935,11 @@ namespace dpct
         mutable std::recursive_mutex m_mutex;
         static bool compare_dev(sycl::device &device1, sycl::device &device2)
         {
+            sycl::backend backend1 = device1.get_backend();
+            sycl::backend backend2 = device2.get_backend();
+            // levelzero backends always come first
+            if(backend1 == sycl::backend::ext_oneapi_level_zero && backend2 != sycl::backend::ext_oneapi_level_zero) return true;
+            if(backend1 != sycl::backend::ext_oneapi_level_zero && backend2 == sycl::backend::ext_oneapi_level_zero) return false;                        
             dpct::device_info prop1;
             dpct::get_device_info(prop1, device1);
             dpct::device_info prop2;

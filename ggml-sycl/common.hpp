@@ -93,7 +93,7 @@ static void crash() {
   *ptr = 0;
 }
 
-static void ggml_sycl_error(
+[[noreturn]] static void ggml_sycl_error(
     const char* stmt,
     const char* func,
     const char* file,
@@ -311,10 +311,8 @@ class sycl_gpu_mgr {
   }
 };
 
-static sycl_gpu_mgr* g_sycl_gpu_mgr = new sycl_gpu_mgr(0);
 static int g_all_sycl_device_count = -1;
 static int g_main_device = -1;
-static int g_main_device_id = -1;
 static bool g_ggml_backend_sycl_buffer_type_initialized = false;
 
 static std::array<float, GGML_SYCL_MAX_DEVICES> g_default_tensor_split = {};
@@ -339,42 +337,20 @@ int get_main_device();
   (void)bad_arch; // suppress unused function warning
 }
 
-/*
-device_id: device ID is shown by ggml_backend_sycl_print_sycl_devices().
-    It is only used to set current working device.
-*/
-inline void check_allow_gpu_id(const int device_id) {
-  if (!g_sycl_gpu_mgr->is_allowed_gpu(device_id)) {
-    char error_buf[256];
-    snprintf(
-        error_buf,
-        sizeof(error_buf),
-        "error: cannot set device=%d, which is not allowed. Please "
-        "set GPU ID in: [%s]",
-        device_id,
-        g_sycl_gpu_mgr->gpus_list.c_str());
-    fprintf(stderr, "%s\n", error_buf);
-    throw std::invalid_argument(error_buf);
-  }
-}
-
-
 int get_current_device_id();
 
 inline dpct::err0 ggml_sycl_set_device(const int device) try {
-  int device_id = g_sycl_gpu_mgr->gpus[device];
-  check_allow_gpu_id(device_id);
 
   int current_device_id;
   SYCL_CHECK(CHECK_TRY_ERROR(current_device_id = get_current_device_id()));
 
   // GGML_SYCL_DEBUG("ggml_sycl_set_device device_id=%d,
   // current_device_id=%d\n", device, current_device);
-  if (device_id == current_device_id) {
+  if (device == current_device_id) {
     return 0;
   }
 
-  return CHECK_TRY_ERROR(dpct::select_device(device_id));
+  return CHECK_TRY_ERROR(dpct::select_device(device));
 } catch (sycl::exception const& exc) {
   std::cerr << exc.what() << "Exception caught at file:" << __FILE__
             << ", line:" << __LINE__ << std::endl;
@@ -474,8 +450,7 @@ struct ggml_backend_sycl_context {
 
     queue_ptr stream(int device, int stream) {
         if (qptrs[device][stream] == nullptr) {
-            qptrs[device][stream] = (dpct::get_current_device().create_queue(
-                        g_sycl_gpu_mgr->get_co_ctx(), dpct::get_current_device()));
+            qptrs[device][stream] = &(dpct::get_current_device().default_queue());
         }
         return qptrs[device][stream];
     }

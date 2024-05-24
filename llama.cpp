@@ -15578,8 +15578,6 @@ struct llama_context * llama_new_context_with_model(
         if (model->split_mode == LLAMA_SPLIT_MODE_NONE || model->split_mode == LLAMA_SPLIT_MODE_ROW) {
             ggml_backend_t backend = ggml_backend_sycl_init(model->main_gpu);
             if (backend == nullptr) {
-                int main_gpu_id = ggml_backend_sycl_get_device_id(model->main_gpu);
-                LLAMA_LOG_ERROR("%s: failed to initialize SYCL%d (index %d) backend\n", __func__, main_gpu_id, model->main_gpu);
                 llama_free(ctx);
                 return nullptr;
             }
