@@ -13418,6 +13418,10 @@ static std::vector<llama_grammar_candidate> llama_grammar_reject_candidates_for_
         }
     }
 
+    if (next_candidates.empty()) {
+        return rejects;
+    }
+
     const auto * stack_pos_after = llama_grammar_match_char(stack_pos, 0).second;
 
     // update top of stack to next element, if any
@@ -13563,7 +13567,7 @@ struct llama_grammar * llama_grammar_init(
     // Important: vec_rules has to be moved here, not copied, because stacks contains
     // pointers to elements of vec_rules. If vec_rules were copied into llama_grammar
     // then the pointers would be invalidated when the local vec_rules goes out of scope.
-    return new llama_grammar{ std::move(vec_rules), std::move(stacks), {} };
+    return new llama_grammar{ std::move(vec_rules), std::move(stacks), {}, {}, {} };
 }
 
 void llama_grammar_free(struct llama_grammar * grammar) {
@@ -13571,18 +13575,24 @@ void llama_grammar_free(struct llama_grammar * grammar) {
 }
 
 struct llama_grammar * llama_grammar_copy(const struct llama_grammar * grammar) {
-    llama_grammar * result = new llama_grammar{ grammar->rules, grammar->stacks, grammar->partial_utf8 };
+    llama_grammar * result = new llama_grammar{ grammar->rules, grammar->stacks, grammar->partial_utf8, grammar->token_pieces, grammar->token_codepoints };
+
+    std::unordered_map<const llama_grammar_element *, const llama_grammar_element *> element_map;
+    element_map.reserve(std::accumulate(
+        grammar->rules.begin(), grammar->rules.end(), 0,
+        [](size_t acc, const std::vector<llama_grammar_element> & rule) {
+            return acc + rule.size();
+        }));
+    for (size_t ir = 0; ir < grammar->rules.size(); ir++) {
+        for (size_t ie = 0; ie < grammar->rules[ir].size(); ie++) {
+            element_map[&grammar->rules[ir][ie]] = &result->rules[ir][ie];
+        }
+    }
 
     // redirect elements in stacks to point to new rules
     for (size_t is = 0; is < result->stacks.size(); is++) {
         for (size_t ie = 0; ie < result->stacks[is].size(); ie++) {
-            for (size_t ir0 = 0; ir0 < grammar->rules.size(); ir0++) {
-                for (size_t ir1 = 0; ir1 < grammar->rules[ir0].size(); ir1++) {
-                    if (grammar->stacks[is][ie] == &grammar->rules[ir0][ir1]) {
-                         result->stacks[is][ie]  =  &result->rules[ir0][ir1];
-                    }
-                }
-            }
+            result->stacks[is][ie] = element_map.at(grammar->stacks[is][ie]);
         }
     }
 
@@ -14052,7 +14062,7 @@ void llama_sample_repetition_penalties(
     }
 }
 
-void llama_sample_grammar(struct llama_context * ctx, llama_token_data_array * candidates, const struct llama_grammar * grammar) {
+void llama_sample_grammar(struct llama_context * ctx, llama_token_data_array * candidates, struct llama_grammar * grammar) {
     GGML_ASSERT(ctx);
     const int64_t t_start_sample_us = ggml_time_us();
 
@@ -14064,21 +14074,36 @@ void llama_sample_grammar(struct llama_context * ctx, llama_token_data_array * c
         }
     }
 
+    if (grammar->token_codepoints.empty()) {
+        auto n_vocab = llama_n_vocab(llama_get_model(ctx));
+        grammar->token_codepoints.resize(n_vocab);
+        grammar->token_pieces.resize(n_vocab);
+        for (llama_token id = 0; id < n_vocab; ++id) {
+            const std::string piece = llama_token_to_piece(ctx, id, false);
+            grammar->token_pieces[id] = piece;
+            grammar->token_codepoints[id] = decode_utf8(piece, {0, 0});
+        }
+    }
+
     std::vector<std::pair<std::vector<uint32_t>, llama_partial_utf8>> candidates_decoded;
-    candidates_decoded.reserve(candidates->size);
+    if (grammar->partial_utf8.n_remain > 0) {
+        candidates_decoded.reserve(candidates->size);
+    }
     std::vector<llama_grammar_candidate>                              candidates_grammar;
     candidates_grammar.reserve(candidates->size);
 
     for (size_t i = 0; i < candidates->size; ++i) {
         const llama_token id    = candidates->data[i].id;
-        const std::string piece = llama_token_to_piece(ctx, id, false);
-
+        const auto & piece      = grammar->token_pieces[id];
         if (llama_token_is_eog(&ctx->model, id)) {
             if (!allow_eog) {
                 candidates->data[i].logit = -INFINITY;
             }
         } else if (piece.empty() || piece[0] == 0) {
             candidates->data[i].logit = -INFINITY;
+        } else if (grammar->partial_utf8.n_remain == 0){
+            const auto & decoded = grammar->token_codepoints.at(id);
+            candidates_grammar.push_back({ i, decoded.first.data(), decoded.second });
         } else {
             candidates_decoded.push_back(decode_utf8(piece, grammar->partial_utf8));
             candidates_grammar.push_back({ i, candidates_decoded.back().first.data(), candidates_decoded.back().second });
@@ -14271,10 +14296,12 @@ void llama_grammar_accept_token(struct llama_context * ctx, struct llama_grammar
         GGML_ASSERT(false);
     }
 
-    const std::string piece = llama_token_to_piece(ctx, token, false);
+    const auto & piece = grammar->token_pieces.at(token);
 
     // Note terminating 0 in decoded string
-    const auto   decoded     = decode_utf8(piece, grammar->partial_utf8);
+    const auto   decoded     = grammar->partial_utf8.n_remain == 0
+        ? grammar->token_codepoints[token]
+        : decode_utf8(piece, grammar->partial_utf8);
     const auto & code_points = decoded.first;
     std::vector<std::vector<const llama_grammar_element *>> tmp_new_stacks;
     for (auto it = code_points.begin(), end = code_points.end() - 1; it != end; ++it) {
