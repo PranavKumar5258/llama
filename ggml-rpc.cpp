@@ -117,6 +117,8 @@ struct ggml_backend_rpc_buffer_context {
     std::string name;
 };
 
+static std::unordered_map<std::string, ggml_backend_t> instances;
+
 // RPC helper functions
 
 static std::shared_ptr<socket_t> make_socket(sockfd_t fd) {
@@ -530,11 +532,13 @@ GGML_CALL static const char * ggml_backend_rpc_name(ggml_backend_t backend) {
 
 GGML_CALL static void ggml_backend_rpc_free(ggml_backend_t backend) {
     ggml_backend_rpc_context * rpc_ctx = (ggml_backend_rpc_context *)backend->context;
+    std::string endpoint = rpc_ctx->endpoint;
     ggml_backend_rpc_buffer_type_context * buft_ctx = (ggml_backend_rpc_buffer_type_context *)rpc_ctx->buft->context;
     delete buft_ctx;
     delete rpc_ctx->buft;
     delete rpc_ctx;
     delete backend;
+    instances.erase(endpoint);
 }
 
 GGML_CALL static ggml_backend_buffer_type_t ggml_backend_rpc_get_default_buffer_type(ggml_backend_t backend) {
@@ -623,8 +627,6 @@ static ggml_backend_i ggml_backend_rpc_interface = {
     /* .event_wait              = */ NULL,
     /* .event_synchronize       = */ NULL,
 };
-
-static std::unordered_map<std::string, ggml_backend_t> instances;
 
 GGML_API GGML_CALL ggml_backend_buffer_type_t ggml_backend_rpc_buffer_type(const char * endpoint) {
     ggml_backend_t backend = ggml_backend_rpc_init(endpoint);
