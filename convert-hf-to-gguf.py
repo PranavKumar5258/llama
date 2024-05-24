@@ -23,7 +23,9 @@ if TYPE_CHECKING:
 
 if 'NO_LOCAL_GGUF' not in os.environ:
     sys.path.insert(1, str(Path(__file__).parent / 'gguf-py'))
-import gguf
+import importlib
+gguf = importlib.import_module("gguf-py.gguf")
+# import gguf
 
 from convert import LlamaHfVocab
 
@@ -56,16 +58,17 @@ class Model:
     part_names: list[str]
     is_safetensors: bool
     hparams: dict[str, Any]
+    gguf_writer: gguf.GGUFManager
     block_count: int
     tensor_map: gguf.TensorNameMap
     tensor_names: set[str] | None
     fname_out: Path
-    gguf_writer: gguf.GGUFWriter
 
     # subclasses should define this!
     model_arch: gguf.MODEL_ARCH
 
-    def __init__(self, dir_model: Path, ftype: gguf.LlamaFileType, fname_out: Path, is_big_endian: bool, use_temp_file: bool, eager: bool):
+    def __init__(self, dir_model: Path, ftype: gguf.LlamaFileType, fname_out: Path, is_big_endian: bool, use_temp_file: bool, eager: bool,
+                 split_arguments: gguf.SplitArguments):
         if type(self) is Model:
             raise TypeError(f"{type(self).__name__!r} should not be directly instantiated")
         self.dir_model = dir_model
@@ -76,9 +79,13 @@ class Model:
         self.lazy = not eager
         self.part_names = Model.get_model_part_names(self.dir_model, ".safetensors")
         self.is_safetensors = len(self.part_names) > 0
+        
         if not self.is_safetensors:
             self.part_names = Model.get_model_part_names(self.dir_model, ".bin")
+            
         self.hparams = Model.load_hparams(self.dir_model)
+        self.gguf_writer = gguf.GGUFManager(fname_out, gguf.MODEL_ARCH_NAMES[self.model_arch], split_arguments,
+                                            endianess=self.endianess, use_temp_file=self.use_temp_file)
         self.block_count = self.find_hparam(["n_layers", "num_hidden_layers", "n_layer"])
         self.tensor_map = gguf.get_tensor_name_map(self.model_arch, self.block_count)
         self.tensor_names = None
@@ -95,7 +102,6 @@ class Model:
         ftype_lw: str = ftype_up.lower()
         # allow templating the file name with the output ftype, useful with the "auto" ftype
         self.fname_out = fname_out.parent / fname_out.name.format(ftype_lw, outtype=ftype_lw, ftype=ftype_lw, OUTTYPE=ftype_up, FTYPE=ftype_up)
-        self.gguf_writer = gguf.GGUFWriter(self.fname_out, gguf.MODEL_ARCH_NAMES[self.model_arch], endianess=self.endianess, use_temp_file=self.use_temp_file)
 
     @classmethod
     def __init_subclass__(cls):
@@ -326,14 +332,11 @@ class Model:
 
     def write(self):
         self.write_tensors()
-        self.gguf_writer.write_header_to_file()
-        self.gguf_writer.write_kv_data_to_file()
-        self.gguf_writer.write_tensors_to_file(progress=True)
+        self.gguf_writer.write_to_file()
         self.gguf_writer.close()
 
     def write_vocab(self):
-        self.gguf_writer.write_header_to_file()
-        self.gguf_writer.write_kv_data_to_file()
+        self.gguf_writer.write_to_file(meta_only=True)
         self.gguf_writer.close()
 
     @staticmethod
@@ -1549,7 +1552,7 @@ class MiniCPMModel(Model):
 
         return [(self.map_tensor_name(name), data_torch)]
 
-
+# TODO what the hell is this?
 @Model.register("QWenLMHeadModel")
 class QwenModel(Model):
     model_arch = gguf.MODEL_ARCH.QWEN
@@ -2702,6 +2705,26 @@ def parse_args() -> argparse.Namespace:
         "--verbose", action="store_true",
         help="increase output verbosity",
     )
+    parser.add_argument(
+        "--split", action="store_true",
+        help="split the converted model into multiple files"
+    )
+    parser.add_argument(
+        "--split-max-tensors", type=int,
+        help="max tensors in each split"
+    )
+    parser.add_argument(
+        "--split-max-size", type=str,
+        help="max size per split N(M|G)"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="only print out a split plan and exit, without writing any new files"
+    )
+    parser.add_argument(
+        "--large-first-shard", action="store_true",
+        help="include tensors in the first shard when splitting (default: metadata only)"
+    )
 
     return parser.parse_args()
 
@@ -2730,7 +2753,15 @@ def main() -> None:
         logger.error(f'Error: {args.model} is not a directory')
         sys.exit(1)
 
-    ftype_map: dict[str, gguf.LlamaFileType] = {
+    if args.split and not (args.split_max_tensors or args.split_max_size):
+        raise ValueError("Need to specify one of --split-max-tensors or --split-max-size when splitting")
+
+    if args.split_max_tensors and args.split_max_size:
+        raise ValueError("Can't specify both --split-max-tensors and --split-max-size")
+
+    split_arguments = gguf.SplitArguments(args=args) if args.split else gguf.SplitArguments()
+
+    ftype_map = {
         "f32": gguf.LlamaFileType.ALL_F32,
         "f16": gguf.LlamaFileType.MOSTLY_F16,
         "bf16": gguf.LlamaFileType.MOSTLY_BF16,
@@ -2750,7 +2781,8 @@ def main() -> None:
 
     with torch.inference_mode():
         model_class = Model.from_model_architecture(hparams["architectures"][0])
-        model_instance = model_class(dir_model, ftype_map[args.outtype], fname_out, args.bigendian, args.use_temp_file, args.no_lazy)
+        model_instance = model_class(dir_model, ftype_map[args.outtype], fname_out, args.bigendian, args.use_temp_file,
+                                     args.no_lazy, split_arguments)
 
         logger.info("Set model parameters")
         model_instance.set_gguf_parameters()
