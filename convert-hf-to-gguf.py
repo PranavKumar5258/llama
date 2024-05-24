@@ -79,7 +79,7 @@ class Model:
         if not self.is_safetensors:
             self.part_names = Model.get_model_part_names(self.dir_model, ".bin")
         self.hparams = Model.load_hparams(self.dir_model)
-        self.block_count = self.find_hparam(["n_layers", "num_hidden_layers", "n_layer"])
+        self.block_count = self.find_hparam(["n_layers", "num_hidden_layers", "n_layer", "num_layers"])
         self.tensor_map = gguf.get_tensor_name_map(self.model_arch, self.block_count)
         self.tensor_names = None
         if self.ftype == gguf.LlamaFileType.GUESSED:
@@ -2464,6 +2464,96 @@ class JinaBertV2Model(BertModel):
             raise NotImplementedError(f'Tokenizer {tokenizer_class} is not supported for JinaBertModel')
         self.gguf_writer.add_add_bos_token(True)
         self.gguf_writer.add_add_eos_token(True)
+
+
+@Model.register("ChatGLMModel")
+class ChatGLMModel(Model):
+    model_arch = gguf.MODEL_ARCH.CHATGLM
+
+    def set_vocab(self):
+        dir_model = self.dir_model
+        hparams = self.hparams
+        tokens: list[bytearray] = []
+        toktypes: list[int] = []
+        scores: list[float] = []
+
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(dir_model, trust_remote_code=True)
+        vocab_size = hparams.get("padded_vocab_size", len(tokenizer.get_vocab()))
+        assert max(tokenizer.get_vocab().values()) < vocab_size
+
+        for token_id in range(vocab_size):
+            piece = tokenizer._convert_id_to_token(token_id)
+            if token_id == 0:
+                piece = "<unk>"
+            elif token_id == 1:
+                piece = "<bos>"
+            elif token_id == 2:
+                piece = "<eos>"
+
+            text = piece.encode("utf-8")
+            score = 0.0
+            # Referencing the tokenizer Python implementation(https://huggingface.co/THUDM/chatglm3-6b/blob/main/tokenization_chatglm.py),
+            # it is only valid if it is less than tokenizer.tokenizer.sp_model.vocab_size()
+            if len(piece) != 0 and token_id < tokenizer.tokenizer.sp_model.vocab_size():
+                score = tokenizer.tokenizer.sp_model.get_score(token_id)
+
+            if len(piece) == 0:
+                text = f"[PAD{token_id}]".encode("utf-8")
+
+            if token_id >= tokenizer.tokenizer.sp_model.vocab_size():
+                toktype = SentencePieceTokenTypes.UNKNOWN
+                tokens.append(text)
+                scores.append(score)
+                toktypes.append(toktype)
+                continue
+
+            toktype = SentencePieceTokenTypes.NORMAL
+            if tokenizer.tokenizer.sp_model.is_unknown(token_id):
+                toktype = SentencePieceTokenTypes.UNKNOWN
+            elif tokenizer.tokenizer.sp_model.is_control(token_id):
+                toktype = SentencePieceTokenTypes.CONTROL
+            elif tokenizer.tokenizer.sp_model.is_unused(token_id):
+                toktype = SentencePieceTokenTypes.UNUSED
+            elif tokenizer.tokenizer.sp_model.is_byte(token_id):
+                toktype = SentencePieceTokenTypes.BYTE
+
+            tokens.append(text)
+            scores.append(score)
+            toktypes.append(toktype)
+
+        self.gguf_writer.add_tokenizer_model("llama")
+        self.gguf_writer.add_token_list(tokens)
+        self.gguf_writer.add_token_scores(scores)
+        self.gguf_writer.add_token_types(toktypes)
+
+        special_vocab = gguf.SpecialVocab(self.dir_model, n_vocab=len(tokens))
+        special_vocab.add_to_gguf(self.gguf_writer)
+
+    def set_gguf_parameters(self):
+        self.gguf_writer.add_name(self.dir_model.name)
+        n_embed = self.hparams.get("hidden_size", self.hparams.get("n_embed"))
+        n_head = self.hparams.get("n_head", self.hparams.get("num_attention_heads"))
+        n_head_kv = self.hparams.get("multi_query_group_num", n_head)
+        self.gguf_writer.add_context_length(self.hparams.get("seq_length", n_embed))
+        self.gguf_writer.add_embedding_length(n_embed)
+        self.gguf_writer.add_feed_forward_length(self.hparams.get("ffn_hidden_size", 4 * n_embed))
+        self.gguf_writer.add_block_count(self.hparams["num_layers"])
+        self.gguf_writer.add_head_count(n_head)
+        self.gguf_writer.add_head_count_kv(n_head_kv)
+        self.gguf_writer.add_layer_norm_rms_eps(self.hparams["layernorm_epsilon"])
+        self.gguf_writer.add_file_type(self.ftype)
+        self.gguf_writer.add_rope_dimension_count(64)
+        self.gguf_writer.add_add_bos_token(False)
+
+    def modify_tensors(self, data_torch: Tensor, name: str, bid: int | None) -> Iterable[tuple[str, Tensor]]:
+        del bid  # unused
+
+        if name.endswith(".rotary_pos_emb.inv_freq"):
+            return []
+
+        name = name.removeprefix("transformer.")
+        return [(self.map_tensor_name(name), data_torch)]
 
 
 ###### CONVERSION LOGIC ######
