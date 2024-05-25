@@ -2291,6 +2291,12 @@ struct llama_context {
 
     // control vectors
     struct llama_control_vector cvec;
+
+    // caching token pieces & their decoded codepoints.
+    std::mutex                 token_cache_mutex;
+    std::vector<std::string>   token_pieces;
+    std::vector<std::pair<std::vector<uint32_t>, llama_partial_utf8>>
+                               token_codepoints_without_partial_utf8_prefix;
 };
 
 static ggml_backend_buffer_type_t llama_default_buffer_type_offload(const llama_model & model, int gpu) {
@@ -14064,21 +14070,41 @@ void llama_sample_grammar(struct llama_context * ctx, llama_token_data_array * c
         }
     }
 
+    {
+        // cache tokens & their decoded codepoints (for common case where there's no partial utf8 prefix bytes) for grammar-constrained sampling.
+        std::unique_lock<std::mutex> lock(ctx->token_cache_mutex);
+        if (ctx->token_pieces.empty()) {
+            auto n_vocab = llama_n_vocab(llama_get_model(ctx));
+            ctx->token_codepoints_without_partial_utf8_prefix.resize(n_vocab);
+            ctx->token_pieces.resize(n_vocab);
+            for (llama_token id = 0; id < n_vocab; ++id) {
+                const std::string piece = llama_token_to_piece(ctx, id, false);
+                ctx->token_pieces[id] = piece;
+                ctx->token_codepoints_without_partial_utf8_prefix[id] = decode_utf8(piece, {0, 0});
+            }
+        }
+    }
+
+    // Store decoded codepoints when they are not cached (happens when there's a partial utf8 string prefix).
     std::vector<std::pair<std::vector<uint32_t>, llama_partial_utf8>> candidates_decoded;
-    candidates_decoded.reserve(candidates->size);
+    if (grammar->partial_utf8.n_remain > 0) {
+        candidates_decoded.reserve(candidates->size);
+    }
     std::vector<llama_grammar_candidate>                              candidates_grammar;
     candidates_grammar.reserve(candidates->size);
 
     for (size_t i = 0; i < candidates->size; ++i) {
         const llama_token id    = candidates->data[i].id;
-        const std::string piece = llama_token_to_piece(ctx, id, false);
-
+        const auto & piece      = ctx->token_pieces[id];
         if (llama_token_is_eog(&ctx->model, id)) {
             if (!allow_eog) {
                 candidates->data[i].logit = -INFINITY;
             }
         } else if (piece.empty() || piece[0] == 0) {
             candidates->data[i].logit = -INFINITY;
+        } else if (grammar->partial_utf8.n_remain == 0){
+            const auto & decoded = ctx->token_codepoints_without_partial_utf8_prefix.at(id);
+            candidates_grammar.push_back({ i, decoded.first.data(), decoded.second });
         } else {
             candidates_decoded.push_back(decode_utf8(piece, grammar->partial_utf8));
             candidates_grammar.push_back({ i, candidates_decoded.back().first.data(), candidates_decoded.back().second });
@@ -14271,10 +14297,12 @@ void llama_grammar_accept_token(struct llama_context * ctx, struct llama_grammar
         GGML_ASSERT(false);
     }
 
-    const std::string piece = llama_token_to_piece(ctx, token, false);
+    const auto & piece = ctx->token_pieces.at(token);
 
     // Note terminating 0 in decoded string
-    const auto   decoded     = decode_utf8(piece, grammar->partial_utf8);
+    const auto   decoded     = grammar->partial_utf8.n_remain == 0
+        ? ctx->token_codepoints_without_partial_utf8_prefix[token]
+        : decode_utf8(piece, grammar->partial_utf8);
     const auto & code_points = decoded.first;
     std::vector<std::vector<const llama_grammar_element *>> tmp_new_stacks;
     for (auto it = code_points.begin(), end = code_points.end() - 1; it != end; ++it) {
