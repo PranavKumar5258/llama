@@ -156,6 +156,10 @@ def generator_custom_text_edge_cases() -> Iterator[str]:
         '<s>a',       # Phi-3 fail
         '<unk><|endoftext|><s>',  # Phi-3 fail
         'a\na',       # TODO: Bert fail
+        '"`',         # falcon
+        ' República'  # deepseek-coder, not inserted in vocab.special_tokens_cache because len==1
+        'a\xa0\xa0\x00b',  # jina-v2-es
+        'one <mask>',  # jina-v2-es  <mask> lstrip=true
     ]
 
 
@@ -167,9 +171,16 @@ def generator_random_special_tokens(tokenizer, iterations=100) -> Iterator[str]:
     for m in range(iterations):
         rand.seed(m)
         words = rand.choices(special_tokens, k=500)
-        if tokenizer.add_bos_token:  # skip spam warning of double BOS
-            while words and words[0] == tokenizer.bos_token:
+        if words and words[0] == tokenizer.bos_token:  # skip spam warning of double BOS
+            while len(words) > 1 and words[1] == tokenizer.bos_token:  # leave one starting BOS
                 words.pop(0)
+            if tokenizer.add_bos_token:  # drop all starting BOS
+                words.pop(0)
+        if words and words[-1] == tokenizer.eos_token:  # skip spam warning of double EOS
+            while len(words) > 1 and words[-2] == tokenizer.eos_token:  # leave one trailing EOS
+                words.pop(-1)
+            if tokenizer.add_bos_token:  # drop all trailing EOS
+                words.pop(-1)
         yield "".join(words)
 
 
@@ -293,14 +304,18 @@ def main(argv: list[str] = None):
     model = LibLlamaModel(LibLlama(), args.vocab_file, mparams=dict(vocab_only=True), cparams=dict(n_ctx=4096))
     tokenizer = AutoTokenizer.from_pretrained(args.dir_tokenizer)
 
-    tokenizer.add_bos_token = getattr(tokenizer, "add_bos_token", True)
-    tokenizer.add_eos_token = getattr(tokenizer, "add_eos_token", False)
-
     def func_tokenize1(text: str):
         return model.tokenize(text, add_special=True, parse_special=True)
 
     def func_tokenize2(text: str):
         return tokenizer.encode(text, add_special_tokens=True)
+
+    ids = func_tokenize2("a")
+    assert 1 <= len(ids) <= 3
+    add_bos_token = len(ids) > 1 and tokenizer.bos_token_id == ids[0]
+    add_eos_token = len(ids) > 1 and tokenizer.eos_token_id == ids[-1]
+    tokenizer.add_bos_token = getattr(tokenizer, "add_bos_token", add_bos_token)
+    tokenizer.add_eos_token = getattr(tokenizer, "add_eos_token", add_eos_token)
 
     vocab = list(sorted(tokenizer.batch_decode(list(tokenizer.get_vocab().values()), skip_special_tokens=True)))
     test_compare_tokenizer(func_tokenize1, func_tokenize2, generator_custom_text())
@@ -324,8 +339,20 @@ if __name__ == "__main__":
     # import os
     # tokenizers = os.listdir(path_tokenizers)
     tokenizers = [
-        "llama-spm",   # SPM
-        "phi-3",       # SPM
+        # "llama-spm",   # SPM
+        # "phi-3",       # SPM
+        # "bert-bge",    # WPM
+        # "jina-v2-en",  # WPM
+        "gpt-2",          # BPE
+        "llama-bpe",      # BPE
+        "falcon",         # BPE
+        "deepseek-coder", # BPE
+        "deepseek-llm",   # BPE
+        "starcoder",      # BPE
+        "jina-v2-es",     # BPE
+        "jina-v2-de",     # BPE
+        "smaug-bpe"       # BPE
+        "phi-2",          # BPE
     ]
 
     for tokenizer in tokenizers:
