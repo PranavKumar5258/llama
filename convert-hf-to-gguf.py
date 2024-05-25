@@ -12,7 +12,8 @@ import sys
 from enum import IntEnum
 from pathlib import Path
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Callable, ContextManager, Iterable, Iterator, Sequence, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, ContextManager, Iterable, Iterator, Sequence, TypeVar, cast, Optional
+from dataclasses import dataclass
 
 import math
 import numpy as np
@@ -28,6 +29,42 @@ import gguf
 from convert import LlamaHfVocab
 
 logger = logging.getLogger("hf-to-gguf")
+
+
+@dataclass
+class Metadata:
+    name: Optional[str] = None
+    author: Optional[str] = None
+    version: Optional[str] = None
+    url: Optional[str] = None
+    description: Optional[str] = None
+    licence: Optional[str] = None
+    source_url: Optional[str] = None
+    source_hf_repo: Optional[str] = None
+
+    @staticmethod
+    def load(metadata_path: Path) -> Metadata:
+        if metadata_path is None or not metadata_path.exists():
+            return Metadata()
+
+        with open(metadata_path, 'r') as file:
+            data = json.load(file)
+
+        # Create a new Metadata instance
+        metadata = Metadata()
+
+        # Assigning values to Metadata attributes if they exist in the JSON file
+        # This is based on LLM_KV_NAMES mapping in llama.cpp
+        metadata.name = data.get("general.name")
+        metadata.author = data.get("general.author")
+        metadata.version = data.get("general.version")
+        metadata.url = data.get("general.url")
+        metadata.description = data.get("general.description")
+        metadata.license = data.get("general.license")
+        metadata.source_url = data.get("general.source.url")
+        metadata.source_hf_repo = data.get("general.source.huggingface.repository")
+
+        return metadata
 
 
 ###### MODEL DEFINITIONS ######
@@ -47,6 +84,7 @@ AnyModel = TypeVar("AnyModel", bound="type[Model]")
 class Model:
     _model_classes: dict[str, type[Model]] = {}
 
+    model_name: str
     dir_model: Path
     ftype: int
     is_big_endian: bool
@@ -60,12 +98,14 @@ class Model:
     tensor_map: gguf.TensorNameMap
     tensor_names: set[str] | None
     fname_out: Path
+    fname_default: Path
     gguf_writer: gguf.GGUFWriter
+    metadata: Metadata
 
     # subclasses should define this!
     model_arch: gguf.MODEL_ARCH
 
-    def __init__(self, dir_model: Path, ftype: gguf.LlamaFileType, fname_out: Path, is_big_endian: bool, use_temp_file: bool, eager: bool):
+    def __init__(self, dir_model: Path, ftype: gguf.LlamaFileType, fname_out: Path, is_big_endian: bool, use_temp_file: bool, eager: bool, metadata: Metadata):
         if type(self) is Model:
             raise TypeError(f"{type(self).__name__!r} should not be directly instantiated")
         self.dir_model = dir_model
@@ -82,6 +122,7 @@ class Model:
         self.block_count = self.find_hparam(["n_layers", "num_hidden_layers", "n_layer"])
         self.tensor_map = gguf.get_tensor_name_map(self.model_arch, self.block_count)
         self.tensor_names = None
+        self.metadata = metadata
         if self.ftype == gguf.LlamaFileType.GUESSED:
             # NOTE: can't use field "torch_dtype" in config.json, because some finetunes lie.
             _, first_tensor = next(self.get_tensors())
@@ -91,10 +132,56 @@ class Model:
             else:
                 logger.info(f"choosing --outtype bf16 from first tensor type ({first_tensor.dtype})")
                 self.ftype = gguf.LlamaFileType.MOSTLY_BF16
-        ftype_up: str = self.ftype.name.partition("_")[2].upper()
-        ftype_lw: str = ftype_up.lower()
-        # allow templating the file name with the output ftype, useful with the "auto" ftype
-        self.fname_out = fname_out.parent / fname_out.name.format(ftype_lw, outtype=ftype_lw, ftype=ftype_lw, OUTTYPE=ftype_up, FTYPE=ftype_up)
+
+        # Update any missing authorship metadata with huggingface_parameters
+        if self.metadata is not None and self.metadata.source_hf_repo is None:
+            if self.hparams is not None and "_name_or_path" in self.hparams:
+                self.metadata.source_hf_repo = self.hparams["_name_or_path"]
+
+        # Set model name based on latest metadata either provided or calculated from environment
+        def get_model_name(metadata, huggingface_parameters, dir_model, model_arch):
+            if metadata is not None and metadata.name is not None:
+                # Explicit Metadata Was Provided By User
+                return metadata.name
+            elif huggingface_parameters is not None and "_name_or_path" in huggingface_parameters:
+                # Hugging Face Parameters Model Name or Model Folder Name is Provided
+                return huggingface_parameters["_name_or_path"]
+            elif huggingface_parameters is not None and "model_type" in huggingface_parameters:
+                # Hugging Face Parameters Model Type is Provided
+                return huggingface_parameters["model_type"]
+            elif dir_model is not None and dir_model.name is not None:
+                # Use directory folder name
+                return dir_model.name
+            else:
+                return gguf.MODEL_ARCH_NAMES[model_arch]
+        self.model_name = get_model_name(self.metadata, self.hparams, self.dir_model, self.model_arch)
+
+        # Extracts and converts the encoding scheme from the given file type name. e.g. 'gguf.LlamaFileType.ALL_F32' --> 'F32'
+        encodingScheme = self.ftype.name.partition("_")[2]
+
+        # Get Expert Count From huggingface_parameters
+        expert_count = self.hparams["num_local_experts"] if "num_local_experts" in self.hparams else None
+
+        # Generate default filename based on model specification and available metadata
+        self.fname_default = gguf.naming_convention(self.model_name, self.metadata.version, expert_count, self.parameter_count(), encodingScheme)
+
+        # Filename Output
+        if fname_out is not None:
+            # custom defined filename and path was provided
+            def fill_templated_filename(filename: str, encodingScheme: str):
+                # Given a file name fill in any type templates e.g. 'some-model-name.{ftype}.gguf'
+                ftype_uppercase: str = encodingScheme.upper()
+                ftype_lowercase: str = encodingScheme.lower()
+                return filename.format(ftype_lowercase,
+                                       outtype=ftype_lowercase, ftype=ftype_lowercase,
+                                       OUTTYPE=ftype_uppercase, FTYPE=ftype_uppercase)
+
+            self.fname_out = fname_out.parent / fill_templated_filename(fname_out.name, encodingScheme)
+        else:
+            # output in the same directory as the model by default
+            self.fname_out = dir_model.parent / self.fname_default
+
+        # Configure GGUF Writer
         self.gguf_writer = gguf.GGUFWriter(self.fname_out, gguf.MODEL_ARCH_NAMES[self.model_arch], endianess=self.endianess, use_temp_file=self.use_temp_file)
 
     @classmethod
@@ -182,8 +269,26 @@ class Model:
             raise ValueError(f"Can not map tensor {name!r}")
         return new_name
 
+    def set_gguf_meta_model(self):
+        self.gguf_writer.add_name(self.model_name)
+
+        if self.metadata is not None:
+            if self.metadata.author is not None:
+                self.gguf_writer.add_author(self.metadata.author)
+            if self.metadata.version is not None:
+                self.gguf_writer.add_version(self.metadata.version)
+            if self.metadata.url is not None:
+                self.gguf_writer.add_url(self.metadata.url)
+            if self.metadata.description is not None:
+                self.gguf_writer.add_description(self.metadata.description)
+            if self.metadata.licence is not None:
+                self.gguf_writer.add_licence(self.metadata.licence)
+            if self.metadata.source_url is not None:
+                self.gguf_writer.add_source_url(self.metadata.source_url)
+            if self.metadata.source_hf_repo is not None:
+                self.gguf_writer.add_source_hf_repo(self.metadata.source_hf_repo)
+
     def set_gguf_parameters(self):
-        self.gguf_writer.add_name(self.dir_model.name)
         self.gguf_writer.add_block_count(self.block_count)
 
         if (n_ctx := self.find_hparam(["max_position_embeddings", "n_ctx"], optional=True)) is not None:
@@ -239,6 +344,28 @@ class Model:
         del name, new_name, bid, n_dims  # unused
 
         return False
+
+    def parameter_count(self):
+        # TODO: Ensure parameter count is accurate throughout various model type
+        #       May currently overestimate parameter count in Mamba model because
+        #       output weights is tied with token embeddings.
+        total_model_parameters = 0
+        for name, data_torch in self.get_tensors():
+            # Got A Tensor
+
+            # We don't need these
+            if name.endswith((".attention.masked_bias", ".attention.bias", ".rotary_emb.inv_freq")):
+                continue
+
+            # Calculate Tensor Volume
+            sum_weights_in_tensor = 1
+            for dim in data_torch.shape:
+                sum_weights_in_tensor *= dim
+
+            # Add Tensor Volume To Running Count
+            total_model_parameters += sum_weights_in_tensor
+
+        return total_model_parameters
 
     def write_tensors(self):
         max_name_len = max(len(s) for _, s in self.tensor_map.mapping.values()) + len(".weight,")
@@ -660,7 +787,6 @@ class GPTNeoXModel(Model):
     def set_gguf_parameters(self):
         block_count = self.hparams["num_hidden_layers"]
 
-        self.gguf_writer.add_name(self.dir_model.name)
         self.gguf_writer.add_context_length(self.hparams["max_position_embeddings"])
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
         self.gguf_writer.add_block_count(block_count)
@@ -716,7 +842,6 @@ class BloomModel(Model):
     model_arch = gguf.MODEL_ARCH.BLOOM
 
     def set_gguf_parameters(self):
-        self.gguf_writer.add_name("Bloom")
         n_embed = self.hparams.get("hidden_size", self.hparams.get("n_embed"))
         n_head = self.hparams.get("n_head", self.hparams.get("num_attention_heads"))
         self.gguf_writer.add_context_length(self.hparams.get("seq_length", n_embed))
@@ -793,7 +918,6 @@ class MPTModel(Model):
 
     def set_gguf_parameters(self):
         block_count = self.hparams["n_layers"]
-        self.gguf_writer.add_name(self.dir_model.name)
         self.gguf_writer.add_context_length(self.hparams["max_seq_len"])
         self.gguf_writer.add_embedding_length(self.hparams["d_model"])
         self.gguf_writer.add_block_count(block_count)
@@ -832,7 +956,6 @@ class OrionModel(Model):
         block_count = self.hparams["num_hidden_layers"]
         head_count = self.hparams["num_attention_heads"]
         head_count_kv = self.hparams.get("num_key_value_heads", head_count)
-        hf_repo = self.hparams.get("_name_or_path", "")
 
         ctx_length = 0
         if "max_sequence_length" in self.hparams:
@@ -845,8 +968,6 @@ class OrionModel(Model):
             raise ValueError("gguf: can not find ctx length parameter.")
 
         self.gguf_writer.add_file_type(self.ftype)
-        self.gguf_writer.add_name(self.dir_model.name)
-        self.gguf_writer.add_source_hf_repo(hf_repo)
         self.gguf_writer.add_tensor_data_layout("Meta AI original pth")
         self.gguf_writer.add_context_length(ctx_length)
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
@@ -870,7 +991,6 @@ class BaichuanModel(Model):
         block_count = self.hparams["num_hidden_layers"]
         head_count = self.hparams["num_attention_heads"]
         head_count_kv = self.hparams.get("num_key_value_heads", head_count)
-        hf_repo = self.hparams.get("_name_or_path", "")
 
         ctx_length = 0
         if "max_sequence_length" in self.hparams:
@@ -882,8 +1002,6 @@ class BaichuanModel(Model):
         else:
             raise ValueError("gguf: can not find ctx length parameter.")
 
-        self.gguf_writer.add_name(self.dir_model.name)
-        self.gguf_writer.add_source_hf_repo(hf_repo)
         self.gguf_writer.add_tensor_data_layout("Meta AI original pth")
         self.gguf_writer.add_context_length(ctx_length)
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
@@ -993,7 +1111,6 @@ class XverseModel(Model):
         block_count = self.hparams["num_hidden_layers"]
         head_count = self.hparams["num_attention_heads"]
         head_count_kv = self.hparams.get("num_key_value_heads", head_count)
-        hf_repo = self.hparams.get("_name_or_path", "")
 
         ctx_length = 0
         if "max_sequence_length" in self.hparams:
@@ -1005,8 +1122,6 @@ class XverseModel(Model):
         else:
             raise ValueError("gguf: can not find ctx length parameter.")
 
-        self.gguf_writer.add_name(self.dir_model.name)
-        self.gguf_writer.add_source_hf_repo(hf_repo)
         self.gguf_writer.add_tensor_data_layout("Meta AI original pth")
         self.gguf_writer.add_context_length(ctx_length)
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
@@ -1065,7 +1180,6 @@ class FalconModel(Model):
         if n_head_kv is None:
             n_head_kv = self.hparams.get("n_head_kv", 1)  # old name
 
-        self.gguf_writer.add_name("Falcon")
         self.gguf_writer.add_context_length(2048)  # not in config.json
         self.gguf_writer.add_tensor_data_layout("jploski")  # qkv tensor transform
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
@@ -1110,7 +1224,6 @@ class StarCoderModel(Model):
     def set_gguf_parameters(self):
         block_count = self.hparams["n_layer"]
 
-        self.gguf_writer.add_name("StarCoder")
         self.gguf_writer.add_context_length(self.hparams["n_positions"])
         self.gguf_writer.add_embedding_length(self.hparams["n_embd"])
         self.gguf_writer.add_feed_forward_length(4 * self.hparams["n_embd"])
@@ -1146,7 +1259,6 @@ class RefactModel(Model):
 
         block_count = self.hparams["n_layer"]
 
-        self.gguf_writer.add_name("Refact")
         # refact uses Alibi. So this is from config.json which might be used by training.
         self.gguf_writer.add_context_length(self.hparams["n_positions"])
         self.gguf_writer.add_embedding_length(self.hparams["n_embd"])
@@ -1201,7 +1313,6 @@ class StableLMModel(Model):
         hparams = self.hparams
         block_count = hparams["num_hidden_layers"]
 
-        self.gguf_writer.add_name(self.dir_model.name)
         self.gguf_writer.add_context_length(hparams["max_position_embeddings"])
         self.gguf_writer.add_embedding_length(hparams["hidden_size"])
         self.gguf_writer.add_block_count(block_count)
@@ -1391,7 +1502,6 @@ class GrokModel(Model):
 
     def set_gguf_parameters(self):
         super().set_gguf_parameters()
-        self.gguf_writer.add_name("Grok")
 
     _experts: list[dict[str, Tensor]] | None = None
 
@@ -1440,7 +1550,6 @@ class DbrxModel(Model):
     def set_gguf_parameters(self):
         ffn_config = self.hparams["ffn_config"]
         attn_config = self.hparams["attn_config"]
-        self.gguf_writer.add_name(self.hparams["model_type"])
         self.gguf_writer.add_block_count(self.hparams["n_layers"])
 
         self.gguf_writer.add_context_length(self.hparams["max_seq_len"])
@@ -1510,7 +1619,6 @@ class MiniCPMModel(Model):
 
     def set_gguf_parameters(self):
         block_count = self.hparams["num_hidden_layers"]
-        self.gguf_writer.add_name("MiniCPM")
         self.gguf_writer.add_context_length(self.hparams["max_position_embeddings"])
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
         self.gguf_writer.add_block_count(block_count)
@@ -1580,7 +1688,6 @@ class QwenModel(Model):
         self._set_vocab_qwen()
 
     def set_gguf_parameters(self):
-        self.gguf_writer.add_name("Qwen")
         self.gguf_writer.add_context_length(self.hparams["max_position_embeddings"])
         self.gguf_writer.add_block_count(self.hparams["num_hidden_layers"])
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
@@ -1665,7 +1772,6 @@ class GPT2Model(Model):
     model_arch = gguf.MODEL_ARCH.GPT2
 
     def set_gguf_parameters(self):
-        self.gguf_writer.add_name(self.dir_model.name)
         self.gguf_writer.add_block_count(self.hparams["n_layer"])
         self.gguf_writer.add_context_length(self.hparams["n_ctx"])
         self.gguf_writer.add_embedding_length(self.hparams["n_embd"])
@@ -1708,7 +1814,6 @@ class Phi2Model(Model):
         n_embd = self.find_hparam(["hidden_size", "n_embd"])
         n_head = self.find_hparam(["num_attention_heads", "n_head"])
 
-        self.gguf_writer.add_name("Phi2")
         self.gguf_writer.add_context_length(self.find_hparam(["n_positions", "max_position_embeddings"]))
 
         self.gguf_writer.add_embedding_length(n_embd)
@@ -1830,7 +1935,6 @@ class Phi3MiniModel(Model):
         orig_max_pos_embds = self.find_hparam(["original_max_position_embeddings"])
         rope_dims = n_embd // n_head
 
-        self.gguf_writer.add_name("Phi3")
         self.gguf_writer.add_context_length(max_pos_embds)
         self.gguf_writer.add_rope_scaling_orig_ctx_len(orig_max_pos_embds)
         self.gguf_writer.add_embedding_length(n_embd)
@@ -1887,7 +1991,6 @@ class PlamoModel(Model):
         hparams = self.hparams
         block_count = hparams["num_hidden_layers"]
 
-        self.gguf_writer.add_name("PLaMo")
         self.gguf_writer.add_context_length(4096)  # not in config.json
         self.gguf_writer.add_embedding_length(hparams["hidden_size"])
         self.gguf_writer.add_feed_forward_length(hparams["intermediate_size"])
@@ -1932,7 +2035,6 @@ class CodeShellModel(Model):
     def set_gguf_parameters(self):
         block_count = self.hparams["n_layer"]
 
-        self.gguf_writer.add_name("CodeShell")
         self.gguf_writer.add_context_length(self.hparams["n_positions"])
         self.gguf_writer.add_embedding_length(self.hparams["n_embd"])
         self.gguf_writer.add_feed_forward_length(4 * self.hparams["n_embd"])
@@ -2066,7 +2168,6 @@ in chat mode so that the conversation can end normally.")
                 .reshape(weights.shape))
 
     def set_gguf_parameters(self):
-        self.gguf_writer.add_name("InternLM2")
         self.gguf_writer.add_context_length(self.hparams["max_position_embeddings"])
         self.gguf_writer.add_block_count(self.hparams["num_hidden_layers"])
         self.gguf_writer.add_embedding_length(self.hparams["hidden_size"])
@@ -2232,7 +2333,6 @@ class GemmaModel(Model):
         hparams = self.hparams
         block_count = hparams["num_hidden_layers"]
 
-        self.gguf_writer.add_name(self.dir_model.name)
         self.gguf_writer.add_context_length(hparams["max_position_embeddings"])
         self.gguf_writer.add_embedding_length(hparams["hidden_size"])
         self.gguf_writer.add_block_count(block_count)
@@ -2332,7 +2432,6 @@ class MambaModel(Model):
         # Fail early for models which don't have a block expansion factor of 2
         assert d_inner == 2 * d_model
 
-        self.gguf_writer.add_name(self.dir_model.name)
         self.gguf_writer.add_context_length(2**20) # arbitrary value; for those who use the default
         self.gguf_writer.add_embedding_length(d_model)
         self.gguf_writer.add_feed_forward_length(0) # unused, but seemingly required when loading
@@ -2701,6 +2800,14 @@ def parse_args() -> argparse.Namespace:
         "--verbose", action="store_true",
         help="increase output verbosity",
     )
+    parser.add_argument(
+        "--metadata", type=Path,
+        help="Specify the path for a metadata file"
+    )
+    parser.add_argument(
+        "--get-outfile", action="store_true",
+        help="get calculated default outfile name"
+    )
 
     return parser.parse_args()
 
@@ -2708,8 +2815,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO)
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    elif args.get_outfile:
+        # Avoid printing anything besides the dump output
+        logging.basicConfig(level=logging.WARNING)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
+    metadata = Metadata.load(args.metadata)
     dir_model = args.model
 
     if args.awq_path:
@@ -2737,19 +2851,22 @@ def main() -> None:
         "auto": gguf.LlamaFileType.GUESSED,
     }
 
-    if args.outfile is not None:
-        fname_out = args.outfile
-    else:
-        # output in the same directory as the model by default
-        fname_out = dir_model / 'ggml-model-{ftype}.gguf'
-
     logger.info(f"Loading model: {dir_model.name}")
 
     hparams = Model.load_hparams(dir_model)
 
     with torch.inference_mode():
-        model_class = Model.from_model_architecture(hparams["architectures"][0])
-        model_instance = model_class(dir_model, ftype_map[args.outtype], fname_out, args.bigendian, args.use_temp_file, args.no_lazy)
+        encodingScheme = ftype_map[args.outtype]
+        model_architecture = hparams["architectures"][0]
+        model_class = Model.from_model_architecture(model_architecture)
+        model_instance = model_class(dir_model, encodingScheme, args.outfile, args.bigendian, args.use_temp_file, args.no_lazy, metadata)
+
+        if args.get_outfile:
+            print(f"{model_instance.fname_default}") # noqa: NP100
+            return
+
+        logger.info("Set meta model")
+        model_instance.set_gguf_meta_model()
 
         logger.info("Set model parameters")
         model_instance.set_gguf_parameters()

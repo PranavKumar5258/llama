@@ -1319,34 +1319,17 @@ def pick_output_type(model: LazyModel, output_type_str: str | None) -> GGMLFileT
 
 
 def model_parameter_count(model: LazyModel) -> int:
+    # TODO: Ensure parameter count is accurate throughout various model type
     total_model_parameters = 0
-    for i, (name, lazy_tensor) in enumerate(model.items()):
+    for name, lazy_tensor in model.items():
+        # Got A Tensor
         sum_weights_in_tensor = 1
+        # Tensor Volume
         for dim in lazy_tensor.shape:
             sum_weights_in_tensor *= dim
+        # Add Tensor Volume To Running Count
         total_model_parameters += sum_weights_in_tensor
     return total_model_parameters
-
-
-def model_parameter_count_rounded_notation(model_params_count: int) -> str:
-    if model_params_count > 1e12 :
-        # Trillions Of Parameters
-        scaled_model_params = model_params_count * 1e-12
-        scale_suffix = "T"
-    elif model_params_count > 1e9 :
-        # Billions Of Parameters
-        scaled_model_params = model_params_count * 1e-9
-        scale_suffix = "B"
-    elif model_params_count > 1e6 :
-        # Millions Of Parameters
-        scaled_model_params = model_params_count * 1e-6
-        scale_suffix = "M"
-    else:
-        # Thousands Of Parameters
-        scaled_model_params = model_params_count * 1e-3
-        scale_suffix = "K"
-
-    return f"{round(scaled_model_params)}{scale_suffix}"
 
 
 def convert_to_output_type(model: LazyModel, output_type: GGMLFileType) -> LazyModel:
@@ -1529,29 +1512,24 @@ class VocabFactory:
 
 
 def default_convention_outfile(file_type: GGMLFileType, params: Params, model_params_count: int, metadata: Metadata) -> str:
-    quantization = {
-        GGMLFileType.AllF32:    "F32",
-        GGMLFileType.MostlyF16: "F16",
-        GGMLFileType.MostlyQ8_0: "Q8_0",
-    }[file_type]
 
-    parameters = model_parameter_count_rounded_notation(model_params_count)
-
-    expert_count = ""
-    if params.n_experts is not None:
-        expert_count = f"{params.n_experts}x"
-
-    version = ""
-    if metadata is not None and metadata.version is not None:
-        version = f"-{metadata.version}"
-
-    name = "ggml-model"
+    name = None
     if metadata is not None and metadata.name is not None:
         name = metadata.name
     elif params.path_model is not None:
         name = params.path_model.name
 
-    return f"{name}{version}-{expert_count}{parameters}-{quantization}"
+    version = metadata.version if metadata is not None and metadata.version is not None else None
+
+    expert_count = params.n_experts if params.n_experts is not None else None
+
+    encodingScheme = {
+        GGMLFileType.AllF32:    "F32",
+        GGMLFileType.MostlyF16: "F16",
+        GGMLFileType.MostlyQ8_0: "Q8_0",
+    }[file_type]
+
+    return gguf.naming_convention(name, version, expert_count, model_params_count, encodingScheme)
 
 
 def default_outfile(model_paths: list[Path], file_type: GGMLFileType, params: Params, model_params_count: int, metadata: Metadata) -> Path:
@@ -1612,9 +1590,9 @@ def main(args_in: list[str] | None = None) -> None:
     if args.get_outfile:
         model_plus = load_some_model(args.model)
         params = Params.load(model_plus)
-        model   = convert_model_names(model_plus.model, params, args.skip_unknown)
+        model = convert_model_names(model_plus.model, params, args.skip_unknown)
         model_params_count = model_parameter_count(model_plus.model)
-        ftype   = pick_output_type(model, args.outtype)
+        ftype = pick_output_type(model, args.outtype)
         print(f"{default_convention_outfile(ftype, params, model_params_count, metadata)}") # noqa: NP100
         return
 
@@ -1632,7 +1610,7 @@ def main(args_in: list[str] | None = None) -> None:
         model_plus = ModelPlus(model = {}, paths = [args.model / 'dummy'], format = 'none', vocab = None)
 
     model_params_count = model_parameter_count(model_plus.model)
-    logger.info(f"model parameters count : {model_params_count} ({model_parameter_count_rounded_notation(model_params_count)})")
+    logger.info(f"model parameters count : {model_params_count} ({gguf.model_parameter_count_rounded_notation(model_params_count)})")
 
     if args.dump:
         do_dump_model(model_plus)
