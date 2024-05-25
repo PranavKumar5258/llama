@@ -57,6 +57,7 @@ class Keys:
         CAUSAL            = "{arch}.attention.causal"
 
     class Rope:
+        TYPE                    = "{arch}.rope.type"
         DIMENSION_COUNT         = "{arch}.rope.dimension_count"
         FREQ_BASE               = "{arch}.rope.freq_base"
         SCALING_TYPE            = "{arch}.rope.scaling.type"
@@ -806,6 +807,13 @@ class TokenType(IntEnum):
     BYTE         = 6
 
 
+class RopeType(Enum):
+    NONE = 'none'
+    NORM = 'norm'
+    NEOX = 'neox'
+    GLM  = 'glm'
+
+
 class RopeScalingType(Enum):
     NONE   = 'none'
     LINEAR = 'linear'
@@ -998,6 +1006,7 @@ KEY_ATTENTION_LAYERNORM_EPS     = Keys.Attention.LAYERNORM_EPS
 KEY_ATTENTION_LAYERNORM_RMS_EPS = Keys.Attention.LAYERNORM_RMS_EPS
 
 # RoPE
+KEY_ROPE_TYPE                 = Keys.Rope.TYPE
 KEY_ROPE_DIMENSION_COUNT      = Keys.Rope.DIMENSION_COUNT
 KEY_ROPE_FREQ_BASE            = Keys.Rope.FREQ_BASE
 KEY_ROPE_SCALING_TYPE         = Keys.Rope.SCALING_TYPE
