@@ -400,6 +400,21 @@ ifndef LLAMA_NO_ACCELERATE
 	endif
 endif # LLAMA_NO_ACCELERATE
 
+ifdef LLAMA_MPI
+	MK_CPPFLAGS += -DGGML_USE_MPI
+	MK_CFLAGS   += -Wno-cast-qual
+	MK_CXXFLAGS += -Wno-cast-qual
+	OBJS        += ggml-mpi.o
+endif # LLAMA_MPI
+
+ifndef LLAMA_NO_OMP
+	MK_CPPFLAGS+= -fopenmp
+	MK_CFLAGS+= -fopenmp
+	MK_LDFLAGS+= -fopenmp
+else
+	MK_CPPFLAGS+= -DGGML_NO_OMP
+endif
+
 ifdef LLAMA_OPENBLAS
 	MK_CPPFLAGS += -DGGML_USE_OPENBLAS $(shell pkg-config --cflags-only-I openblas)
 	MK_CFLAGS   += $(shell pkg-config --cflags-only-other openblas)
